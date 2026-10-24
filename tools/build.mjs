@@ -24,7 +24,10 @@ const fonts = [
   { name: 'Noto Sans Bengali', wght: 700, style: 'normal', file: '@fontsource/noto-sans-bengali/files/noto-sans-bengali-bengali-700-normal.woff2' },
 ];
 
-rmSync(out, { recursive: true, force: true });
+// docs/ = বিল্ড-আউটপুট এবং পড়া-নথি দুটোরই জায়গা; তাই পুরো ফোল্ডার মুছবো না,
+// শুধু যন্ত্র-বানানো ফাইলগুলো মুছবো। design-khadga.md / content-preview.html অক্ষত থাকবে।
+const GENERATED = ['index.html', 'app.js', 'styles.css', 'fonts.css', 'sw.js', 'content', 'fonts'];
+for (const g of GENERATED) rmSync(join(out, g), { recursive: true, force: true });
 mkdirSync(join(out, 'content'), { recursive: true });
 mkdirSync(join(out, 'fonts'), { recursive: true });
 

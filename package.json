@@ -10,8 +10,8 @@
     "preview": "node tools/preview.mjs",
     "typecheck": "tsc --noEmit",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "build": "node tools/validate.mjs && node tools/preview.mjs && tsc --noEmit && node tools/build.mjs",
-    "check": "npm run validate && npm run typecheck && npm run test && npm run build",
+    "build": "node tools/validate.mjs && tsc --noEmit && node tools/build.mjs",
+    "check": "npm run validate && npm run typecheck && npm run test && node tools/build.mjs && node tools/preview.mjs",
     "serve": "python3 -m http.server 8124 --bind 0.0.0.0 --directory docs"
   },
   "dependencies": {
