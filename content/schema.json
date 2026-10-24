@@ -1,0 +1,162 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://github.com/TitaniaRoro/Khadga/content/schema.json",
+  "title": "খড়্গ — ইতিহাস-সামগ্রীর রূপ (content/chapters.json)",
+  "description": "এই ফাইলটি খেলার সমস্ত ইতিহাস-বিষয়বস্তু সংজ্ঞায়িত করে। ইঞ্জিন কোড শুধু এই রূপ মেনেই চলবে; কোনো ইতিহাস কোডের ভেতর লেখা হবে না। নিয়মগুলো tools/validate.mjs যন্ত্র দিয়ে পরীক্ষা করা হয়।",
+  "type": "object",
+  "required": ["meta", "chapters"],
+  "additionalProperties": false,
+  "properties": {
+    "meta": {
+      "type": "object",
+      "required": ["title_bn", "subtitle_bn", "version", "language", "span", "bearer_lineage_bn", "sources_legend"],
+      "properties": {
+        "title_bn": { "type": "string", "description": "খেলায় দেখানো নাম (বাংলা)" },
+        "subtitle_bn": { "type": "string" },
+        "version": { "type": "string" },
+        "language": { "const": "bn", "description": "পুরো UI বাংলা — অন্য মান নেই" },
+        "span": {
+          "type": "array", "items": { "type": "integer" }, "minItems": 2, "maxItems": 2,
+          "description": "কালসীমা [১২০৪, ১৭৫৭]; কার্ডের year এই সীমার বাইরে হলে context বা aftermath ফ্ল্যাগ লাগবে"
+        },
+        "bearer_lineage_bn": { "type": "string", "description": "খড়্গধর-বংশের এক লাইনের পরিচয়" },
+        "sources_legend": {
+          "type": "object", "minProperties": 1,
+          "additionalProperties": { "type": "string" },
+          "description": "প্রতিটি উৎস-কী-এর পূর্ণ পরিচয়; কার্ডের sources-তালিকা এই কী- দিয়ে শুরু হতে হবে"
+        }
+      }
+    },
+    "chapters": {
+      "type": "array",
+      "minItems": 9,
+      "items": { "$ref": "#/definitions/chapter" }
+    }
+  },
+  "definitions": {
+    "bengaliText": {
+      "type": "string",
+      "description": "বাংলা প্রদর্শন-পাঠ। নিষিদ্ধ: ল্যাটিন অক্ষর, দেবনাগরী, CJK, আসামিয ৰ/ৱ, ASCII সংখ্যা (বাংলা সংখ্যা ব্যবহার)"
+    },
+    "chapter": {
+      "type": "object",
+      "required": ["id", "slug", "title_bn", "years_bn", "fight_bn", "bearer_bn", "panels_bn", "cards", "quiz", "tactics"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "integer", "minimum": 0 },
+        "slug": { "type": "string", "pattern": "^[a-z0-9-]+$" },
+        "title_bn": { "$ref": "#/definitions/bengaliText" },
+        "years_bn": { "type": "string" },
+        "fight_bn": {
+          "oneOf": [
+            { "type": "null", "description": "প্রাক-কথন (অধ্যায় ০) — লড়াই নেই" },
+            {
+              "type": "object",
+              "required": ["waves", "duel_bn"],
+              "additionalProperties": false,
+              "properties": {
+                "waves": { "type": "integer", "minimum": 1, "maximum": 4 },
+                "duel_bn": { "type": "string", "description": "১-বনাম-১ দ্বৈরথের সংক্ষিপ্ত বর্ণনা" }
+              }
+            }
+          ]
+        },
+        "bearer_bn": {
+          "type": "object",
+          "required": ["name_bn", "role_bn"],
+          "additionalProperties": false,
+          "properties": { "name_bn": { "type": "string" }, "role_bn": { "type": "string" } }
+        },
+        "panels_bn": {
+          "type": "array", "minItems": 4, "maxItems": 4,
+          "items": { "$ref": "#/definitions/bengaliText" },
+          "description": "অধ্যায়-শুরুর ৪টি নীরব প্যানেল (কথোপকথন ছাড়া, ইলাস্ট্রেটেড)"
+        },
+        "cards": { "type": "array", "minItems": 6, "maxItems": 12, "items": { "$ref": "#/definitions/card" } },
+        "quiz": { "type": "array", "minItems": 3, "maxItems": 5, "items": { "$ref": "#/definitions/quizItem" } },
+        "boss": {
+          "description": "fight_bn null না হলে boss বাধ্যতাইপূর্ণ। কখনওই পূজনীয় সুফির নাম বস হতে পারবে না।",
+          "type": "object",
+          "required": ["name_bn", "allegiance_bn", "myth_bn", "breakline_bn", "tactic_bn"],
+          "additionalProperties": false,
+          "properties": {
+            "name_bn": { "type": "string" },
+            "allegiance_bn": { "type": "string" },
+            "myth_bn": { "type": "string", "description": "যে প্রচলিত ভাবনা এ অধ্যায় ভাঙা হবে" },
+            "breakline_bn": { "type": "string", "description": "ভাঙার লাইন — লোডে দেখানো হয়" },
+            "tactic_bn": { "type": "string" }
+          }
+        },
+        "tactics": {
+          "type": "array", "minItems": 4, "maxItems": 5,
+          "items": {
+            "type": "object",
+            "required": ["card", "boon_bn"],
+            "additionalProperties": false,
+            "properties": {
+              "card": { "type": "string", "description": "এই অধ্যায়ের একটি কার্ডের id" },
+              "boon_bn": { "type": "string", "description": "কার্ডটা পড়লে যে গেমপ্লে-লাভ" }
+            }
+          }
+        }
+      }
+    },
+    "card": {
+      "type": "object",
+      "required": ["id", "type", "year", "place", "bn", "tags", "sources"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^c[0-9]+-[a-z0-9-]+$" },
+        "type": { "enum": ["fact", "event", "place", "figure", "idea", "legend", "myth", "quote", "disputed"] },
+        "year": {
+          "oneOf": [
+            { "type": "integer", "minimum": 600, "maximum": 1800 },
+            { "type": "null", "description": "তারিখবিহীন তত্ত্ব-কার্ড" }
+          ]
+        },
+        "place": {
+          "oneOf": [ { "type": "string", "minLength": 2 }, { "type": "null", "description": "অবস্থান-নিরপেক্ষ তত্ত্ব-কার্ড" } ]
+        },
+        "bn": { "$ref": "#/definitions/bengaliText", "minLength": 40, "maxLength": 620 },
+        "tags": {
+          "type": "array", "minItems": 1, "uniqueItems": true,
+          "items": { "enum": ["syncretism", "economy", "navy", "source-criticism", "coexistence", "women", "warfare", "politics"] },
+          "description": "অন্তত একটি কার্ডে syncretism থাকতেই হবে (প্রতি অধ্যায়ে)"
+        },
+        "context": { "type": "boolean", "description": "১২০৪-এর আগের প্রেক্ষাপট — span-এর বাইরের year বৈধ করতে" },
+        "aftermath": { "type": "boolean", "description": "১৭৫৭-এর পরের ফলাফল-কার্ড" },
+        "disputed": { "type": "boolean" },
+        "views": {
+          "type": "array", "minItems": 2, "maxItems": 3,
+          "items": { "type": "string", "minLength": 25 },
+          "description": "মতভেদ থাকলে উভয় পক্ষই দেখাতে হবে — এটি অনিবার্য নিয়ম"
+        },
+        "sources": {
+          "type": "array", "minItems": 1,
+          "items": { "type": "string", "minLength": 4 },
+          "description": "উৎস ছাড়া কোনো কার্ড থাকবে না — উৎস-কী meta.sources_legend-এ থাকতে হবে"
+        },
+        "gameplay": { "type": "string", "description": "ঐচ্ছিক: কার্ডটির লড়াই-সম্পর্কিত নোট" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "disputed" } } },
+          "then": { "required": ["views", "disputed"], "properties": { "disputed": { "const": true } } }
+        }
+      ]
+    },
+    "quizItem": {
+      "type": "object",
+      "required": ["id", "q_bn", "choices_bn", "answer", "explain_bn", "card"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "pattern": "^q[0-9]+-[0-9]+$" },
+        "q_bn": { "type": "string", "pattern": "\\?$" },
+        "choices_bn": { "type": "array", "minItems": 4, "maxItems": 4, "items": { "type": "string" }, "uniqueItems": true },
+        "answer": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "explain_bn": { "type": "string", "minLength": 20 },
+        "card": { "type": "string", "description": "যে কার্ড থেকে উত্তর আসবে — resolve করতেই হবে" }
+      }
+    }
+  }
+}

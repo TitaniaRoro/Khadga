@@ -1,0 +1,13 @@
+{
+  "name": "khadga",
+  "version": "0.0.0",
+  "private": true,
+  "description": "খড়্গ — বাংলার মুসলিম শাসনের ইতিহাস শেখানো লড়াই-খেলা (১২০৪–১৭৫৭), সম্পূর্ণ বাংলা UI, সার্ভারলেস",
+  "type": "module",
+  "license": "GPL-3.0-only",
+  "scripts": {
+    "validate": "node tools/validate.mjs",
+    "preview": "node tools/preview.mjs",
+    "check": "node tools/validate.mjs && node tools/preview.mjs"
+  }
+}
