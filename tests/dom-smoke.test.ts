@@ -62,14 +62,14 @@ let drawCalls = 0;
 function ctxStub(): Record<string, (...a: unknown[]) => void> {
   const base = {
     canvas: { width: 760, height: 360 },
-    save() {}, restore() {}, beginPath() {}, closePath() {}, fill() {}, stroke() {},
+    save() {}, restore() {}, beginPath() {}, closePath() {},
+    fill() { drawCalls++; }, stroke() { drawCalls++; },
     moveTo() {}, lineTo() {}, quadraticCurveTo() {}, arc() {}, ellipse() {}, rect() {},
     fillRect() {}, strokeRect() {}, clearRect() {}, translate() {}, rotate() {}, scale() {},
     setTransform() {}, fillText() {}, setLineDash() {},
     createLinearGradient: () => ({ addColorStop() {} }),
     measureText: () => ({ width: 10 }),
   } as unknown as Record<string, (...a: unknown[]) => void>;
-  base.draw = () => { drawCalls++; };
   return new Proxy(base, {
     get(t, k: string) { if (k in t) return t[k]; return () => undefined; },
     set(t, k: string, v: unknown) { t[k] = v as never; return true; },
@@ -77,6 +77,7 @@ function ctxStub(): Record<string, (...a: unknown[]) => void> {
 }
 
 function installDom(): { body: El; byId: Map<string, El>; frameCbs: ((t: number) => void)[] } {
+  drawCalls = 0;
   const byId = new Map<string, El>();
   const html = readFileSync(HTML, 'utf8');
   const ids = [...html.matchAll(/id="([\w-]+)"/g)].map((m) => m[1]!);
@@ -159,8 +160,12 @@ test('boot → title → অধ্যায় ১-এর ঢেউ: ৩০০ �
     g!.input.inject(f % 7 === 0 ? 'cut' : f % 23 === 0 ? 'guard' : null, f % 11 === 0 ? 1 : 0);
     for (const cb of dom.frameCbs.splice(0)) cb(f * 16.7);
   }
-  assert.ok(drawCalls === 0 || drawCalls > 0);
+  assert.ok(drawCalls > 300 * 5, `ক্যানভাসে আঁকা হয়নি মনে হচ্ছে (draw-calls ${drawCalls})`);
   assert.ok(['wave', 'result'].includes(g!.scene), `সিন আটকে গেছে: ${g!.scene}`);
+  const clock = dom.byId.get('clock');
+  assert.ok(clock && /[:০-৯]/.test(clock.textContent), 'HUD-ঘড়ি লেখেনি');
+  const tbar = dom.byId.get('tbar');
+  assert.ok(tbar && tbar.innerHTML.includes('ঢেউ'), 'ঢেউ-ফলক ভরাট হয়নি');
 });
 
 test('কোনো id দ্বন্দ্ব নেই: index.html-এর id-গুলো অদ্বিতীয়', () => {

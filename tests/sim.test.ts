@@ -144,3 +144,53 @@ test('নির্দিষ্ট সময়ের মধ্যে প্র�
   }
   assert.ok(parried || true, 'প্যারি সম্ভব — ইনপুট-টাইমিং-চাহিদা প্রমাণে নয়, ফ্রেম-টেস্টে');
 });
+
+/**
+ * সমগ্রী-চালিত ইঞ্জিনের আসল প্রমাণ: ৯টি অধ্যায়েই লড়াই চলতে হবে,
+ * কোনো হার্ডকোডেড অধ্যায়-নম্বর ছাড়াই। নতুন অধ্যায় JSON-এ যোগ করলেই এটা চলবে।
+ */
+test('প্রতিটি লড়াই-থাকা অধ্যায়ে ৬০০ ফ্রেম নির্বিঘ্নে চলে (১…৮)', () => {
+  const fought = doc.chapters.filter((c) => c.fight_bn !== null);
+  assert.equal(fought.length, 8, '৯টির মধ্যে ৮টিতে লড়াই (অধ্যায় ০ প্রাক-কথন)');
+  for (const ch of fought) {
+    for (const mode of ['wave', 'duel'] as const) {
+      const sim = new Sim(ch, doc.meta, mode, ch.id * 31 + 5);
+      let ticks = 0;
+      for (let f = 0; f < 600; f++) {
+        const inp: InputFrame = {
+          moveX: f % 9 === 0 ? 1 : 0, moveY: 0,
+          pressed: f % 13 === 0 ? 'cut' : f % 41 === 0 ? 'heavy' : f % 67 === 0 ? 'guard' : null,
+          answer: sim.duel.question ? sim.duel.question.answer : null,
+          parryAnswer: null,
+        };
+        const ev = sim.step(inp);
+        assert.ok(Array.isArray(ev), `${ch.id}/${mode}: ইভেন্ট-তালিকা ভাঙলো`);
+        if (sim.over) break;
+        ticks++;
+      }
+      assert.ok(ticks > 100, `অধ্যায় ${ch.id}/${mode}: মাত্র ${ticks} ফ্রেম চলেছে`);
+      assert.ok(sim.player.hp >= 0 && sim.player.hp <= MAX_HP, `অধ্যায় ${ch.id}: প্রাণ সীমার বাইরে`);
+      // কোনো কার্ড id-ই হাওয়ায় যায়নি
+      for (const q of ch.quiz) assert.ok(ch.cards.some((c) => c.id === q.card), `${q.card} → কার্ড নেই`);
+    }
+  }
+});
+
+test('বস-নামে কোনো পূজনীয় সুফি নেই — প্রতিটি অধ্যায়ে (design §৪)', () => {
+  const VENERATED = ['শাহ জালাল', 'শাহজালাল', 'শাহ পরান', 'আদম খাঁ', 'খান জাহান আলী', 'শাহে জালাল'];
+  for (const ch of doc.chapters) {
+    if (!ch.boss) continue;
+    for (const v of VENERATED) assert.equal(ch.boss.name_bn.includes(v), false, `অধ্যায় ${ch.id}: ${v} বস হয়েছে`);
+    assert.ok(ch.boss.myth_bn.length > 8 && ch.boss.breakline_bn.length > 12, `অধ্যায় ${ch.id}: মথ-ভাঙা অসম্পূর্ণ`);
+  }
+});
+
+test('জোরপূর্বক-রূপান্তর কোনো কার্ডেই দাবি হিসেবে নেই (design §৫)', () => {
+  for (const ch of doc.chapters) {
+    for (const c of ch.cards) {
+      if (/জোর করে ধর্মান্তর|জোরপূর্বক ধর্মান্তর|তলোয়ারের ধর্ম/.test(c.bn)) {
+        assert.ok(/নয়|না|ভুল|মিথ্যা|প্রমাণ|থাকে না/.test(c.bn), `${c.id}: নাকচ-প্রসঙ্গ ছাড়া দাবি`);
+      }
+    }
+  }
+});
