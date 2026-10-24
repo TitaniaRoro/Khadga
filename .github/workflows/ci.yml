@@ -31,11 +31,14 @@ jobs:
       - name: টাইপচেক
         run: npm run typecheck
 
-      - name: লড়াই-নিয়মের টেস্ট
-        run: npm run test
-
+      # বিল্ড টেস্টের আগে: dom-smoke টেস্ট বিল্ড-আউটপুট (docs/app.js, docs/index.html)
+      # চালায়, আর docs/ ট্র্যাক করা হয় না — ক্রম উল্টো হলে ফ্রেশ CI-চেকআউটে
+      # 'docs/app.js নেই' বলে হারাবে (লোকালে docs/ থেকে যায় বলে ধরা পড়েনি)।
       - name: বিল্ড (docs/)
         run: node tools/build.mjs
+
+      - name: লড়াই-নিয়মের টেস্ট
+        run: npm run test
 
       - uses: actions/upload-artifact@v4
         with:

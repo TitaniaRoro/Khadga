@@ -12,7 +12,7 @@
 
 ```bash
 npm ci
-npm run check          # validate → typecheck → test → build → preview
+npm run check          # validate → typecheck → build → test → preview
 python3 -m http.server 8124 --directory docs   # অথবা: npm run serve
 ```
 
