@@ -1,0 +1,74 @@
+name: যাচাই ও প্রকাশ
+
+# নোট: এই ফাইলে কোনো flow-mapping ({ a: b }) নেই —
+# `${{ }}` এক্সপ্রেশন ফ্লো-স্টাইলের ভেতর বসালে YAML সেটাকে নেস্টেড কালেকশন
+# ভেবে ফেলে করে (এখানেই প্রথম সংস্করণটি ০ সেকেন্ডে ফেল করেছিল, কোনো ছাড়া-চিহ্ন না দেখিয়ে)।
+on:
+  push:
+    branches:
+      - main
+      - 'arena/**'
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: নির্ভরতা
+        run: npm ci
+
+      # সমগ্রী আগে: ইতিহাস-দাবি ভুল হলে বাকি সব সবুজ হওয়ায় কিছু যায় আসে না
+      - name: ইতিহাস-সামগ্রী যাচাই
+        run: npm run validate
+
+      - name: টাইপচেক
+        run: npm run typecheck
+
+      # বিল্ড টেস্টের আগে: dom-smoke টেস্ট বিল্ড-আউটপুট (docs/app.js, docs/index.html)
+      # চালায়, আর docs/ ট্র্যাক করা হয় না — ক্রম উল্টো হলে ফ্রেশ CI-চেকআউটে
+      # 'docs/app.js নেই' বলে হারাবে (লোকালে docs/ থেকে যায় বলে ধরা পড়েনি)।
+      - name: বিল্ড (docs/)
+        run: node tools/build.mjs
+
+      - name: লড়াই-নিয়মের টেস্ট
+        run: npm run test
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site
+          path: docs
+          retention-days: 7
+
+  pages:
+    needs: check
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: site
+          path: docs
+
+      - uses: actions/configure-pages@v4
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs
+
+      # upload-pages-artifact শুধু তোলে; প্রকাশ করে এই ধাপটি — এটা বাদ দিলে
+      # CI সবুজ থাকবে, Sites ট্যাবে কিছুই বদলাবে না (নীরব ব্যর্থতা)।
+      - id: deployment
+        uses: actions/deploy-pages@v4

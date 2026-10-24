@@ -1,0 +1,26 @@
+{
+  "name": "khadga",
+  "version": "0.0.0",
+  "private": true,
+  "description": "খড়্গ — বাংলার মুসলিম শাসনের ইতিহাস শেখানো লড়াই-খেলা (১২০৪–১৭৫৭), সম্পূর্ণ বাংলা UI, সার্ভারলেস",
+  "type": "module",
+  "license": "GPL-3.0-only",
+  "scripts": {
+    "validate": "node tools/validate.mjs",
+    "preview": "node tools/preview.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --experimental-strip-types --test tests/*.test.ts",
+    "build": "node tools/validate.mjs && tsc --noEmit && node tools/build.mjs",
+    "check": "npm run validate && npm run typecheck && node tools/build.mjs && npm run test && node tools/preview.mjs",
+    "serve": "python3 -m http.server 8124 --bind 0.0.0.0 --directory docs"
+  },
+  "dependencies": {
+    "@fontsource/hind-siliguri": "5.2.5",
+    "@fontsource/noto-sans-bengali": "5.2.5"
+  },
+  "devDependencies": {
+    "@types/node": "22.15.3",
+    "esbuild": "0.25.12",
+    "typescript": "5.9.3"
+  }
+}

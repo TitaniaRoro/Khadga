@@ -1,0 +1,8 @@
+node_modules/
+.venv/
+# docs/ = GitHub Pages রুট; এখানকার যন্ত্র-বানানো ফাইল ট্র্যাক করা হয় না
+# (সব tools/build.mjs + tools/preview.mjs থেকে তৈরি, CI-তে বিল্ড হয়)
+docs/*
+!docs/design-khadga.md
+*.log
+.DS_Store
