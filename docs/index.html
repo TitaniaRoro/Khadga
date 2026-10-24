@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<meta name="theme-color" content="#12100e">
+<meta name="description" content="খড়্গ — বাংলার মুসলিম শাসনের ইতিহাস শেখানো লড়াই-খেলা (১২০৪–১৭৫৭), সম্পূর্ণ বাংলা, সার্ভার ছাড়াই চলে।">
+<title>খড়্গ</title>
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app">
+  <header id="topbar">
+    <h1 id="gtitle">খড়্গ</h1><p id="gsub"></p>
+    <div id="hudtop">
+      <button data-act="pause" aria-label="বিরতি">বিরতি</button>
+    </div>
+  </header>
+
+  <div id="stagebox">
+    <canvas id="stage" width="760" height="360" aria-label="লড়াইয়ের মাঠ"></canvas>
+    <div id="hud" class="hide">
+      <div class="meters">
+        <label><span>প্রাণ</span><i class="bar"><b id="bar-hp"></b></i></label>
+        <label><span>ঢাল</span><i class="bar"><b id="bar-guard" class="g"></b></i></label>
+        <label><span>সংকল্প</span><i class="bar"><b id="bar-meter" class="m"></b></i></label>
+      </div>
+      <div id="tbar"></div>
+      <div id="clockbox"><span id="clock"></span> · <span id="readcount"></span></div>
+      <div id="hint"></div>
+      <div id="qbar" class="hide"></div>
+      <div id="banner"></div>
+      <div id="toast"></div>
+    </div>
+  </div>
+
+  <div id="pad" class="hide">
+    <div id="stick" aria-label="চলাফেরা"><span class="knob"></span></div>
+    <div id="btns">
+      <button data-input="cut" class="b1">কাটা<em>J</em></button>
+      <button data-input="heavy" class="b2">কোপ<em>K</em></button>
+      <button data-input="thrust" class="b3">পোঁতা<em>L</em></button>
+      <button data-input="guard" class="b4">রোধ<em>Space</em></button>
+      <button data-input="side" class="b5">সবে<em>Shift</em></button>
+      <button data-input="resolve" class="b6">সংকল্প<em>U</em></button>
+    </div>
+  </div>
+
+  <section id="title">
+    <h2>১২০৪ সেরা বাংলা — একই খড়্গ, প্রজন্ম থেকে প্রজন্মে</h2>
+    <p class="lead">তুমি কোনো সুলতান নও। তুমি সেই পদাতিক — তাঁর খড়্গ প্রতি অধ্যায়ে এক হাত থেকে পরের হাতে যায়:
+      ঝাড়খণ্ডের জঙ্গল পেরিয়ে নদিয়ার পতন, সোনারগাঁওয়ের স্বাধীনতা, গৌড়ের ইট, রাজমহলের হাতি,
+      ভাটির নদী-জঙ্গল, ঢাকার জৌলুশ, আর পলাশীর বিশ্বাসঘাতকতা।</p>
+    <p class="soft">প্রতি অধ্যায়ে ইতিহাসের কার্ড পড়লে সংকল্প-মিটার ভরে; ঢাল ভেঙে সঠিক উত্তর দিলে লড়াই শেষ হয়।
+      কারওকে মারা হয় না — রক্ষা করাই জয়।</p>
+    <button class="pri" data-act="start">খেলা শুরু</button>
+    <p class="keys">কিবোর্ড: J কাটা · K কোপ · L পোঁতা · Space রোধ · Shift সবে · U সংকল্প · অ্যারো/ADWQ চলা · ১–৪ উত্তর</p>
+    <p class="soft"><button data-act="copySave">হাল-কোড</button> <button data-act="pasteSave">কোড বসাও</button>
+      <button data-act="reduce">কম নড়াচড়া</button> <button data-act="cb">রঙ-অন্ধ-বান্ধব</button>
+      <button data-act="music" class="on">যন্ত্রসংগীত</button> <button data-act="gentle">সহজ মোড</button>
+      <button data-act="teacher">শিক্ষক-মোড</button> <button data-act="fontUp">লেখা বড়</button> <button data-act="fontDown">লেখা ছোট</button></p>
+    <p id="loadmsg">ইতিহাস-সামগ্রী আসছে…</p>
+  </section>
+
+  <section id="select" class="hide"></section>
+  <section id="read" class="hide"></section>
+  <section id="result" class="hide"></section>
+  <div id="pause" class="hide"><div><h2>বিরতি</h2><button class="pri" data-act="resume">চালাও</button>
+    <button data-act="back">অধ্যায় তালিকা</button></div></div>
+</div>
+<script type="module" src="app.js"></script>
+</body>
+</html>

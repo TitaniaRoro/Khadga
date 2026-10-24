@@ -1,0 +1,115 @@
+/*
+ * web/styles.css — খড়্গ-এর দেখা-সব-কিছু।
+ * শৈলী: ছায়া-পুতুল (কাগজ/চামড়ার পুতুল-নাচের ছায়া) — উষ্ণ মাটি-রঙ, ফ্ল্যাট সিলুয়েট,
+ * কোনো ফটো-টেক্সচার নেই। মোবাইল-প্রথম: বোতাম ৪৪px+, ল্যান্ডস্কেপে মাঠ পুরো প্রস্থ।
+ */
+:root{
+  --ink:#12100e; --panel:#1b1815; --line:#2c2823; --paper:#ece5d8; --dim:#9c9282;
+  --gold:#c9a44c; --rust:#a4553c; --good:#6d9a63; --bad:#b45a4a;
+  --fs:16px; --pad:12px;
+}
+[data-fs="0"]{--fs:14px} [data-fs="2"]{--fs:19px} [data-fs="3"]{--fs:22px}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:var(--ink);color:var(--paper);
+  font-family:"Hind Siliguri","Noto Sans Bengali",system-ui,sans-serif;font-size:var(--fs);line-height:1.65}
+#app{min-height:100%;display:flex;flex-direction:column;max-width:1100px;margin:0 auto;padding:0 var(--pad) env(safe-area-inset-bottom)}
+#topbar{display:flex;align-items:baseline;gap:10px;padding:8px 0 6px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+#topbar h1{margin:0;font-size:1.35em;letter-spacing:.02em}
+#topbar p{margin:0;color:var(--dim);font-size:.8em;flex:1 1 200px}
+#hudtop button{background:#ffffff10;color:var(--paper);border:1px solid var(--line);border-radius:8px;padding:6px 11px;font:inherit;font-size:.8em}
+.hide{display:none!important}
+/* ── মাঠ ── */
+#stagebox{position:relative;width:100%;aspect-ratio:760/360;background:#000;border:1px solid var(--line);
+  border-radius:12px;overflow:hidden;margin:10px 0 0}
+#stage{display:block;width:100%;height:100%}
+/* ── HUD ── */
+#hud{position:absolute;inset:0;pointer-events:none;padding:8px 10px;display:flex;flex-direction:column;gap:6px;font-size:.82em}
+.meters{display:flex;gap:8px;flex-wrap:wrap}
+.meters label{display:flex;align-items:center;gap:6px;background:#00000070;border-radius:20px;padding:3px 9px}
+.meters span{color:var(--dim);font-size:.85em}
+.bar{display:block;width:88px;height:7px;background:#ffffff20;border-radius:6px;overflow:hidden}
+.bar b{display:block;height:100%;width:100%;background:var(--good);transition:width .12s linear}
+.bar b.g{background:#6f97b8}.bar b.m{background:var(--gold)}
+#tbar{align-self:flex-start;background:#00000070;border-radius:8px;padding:3px 9px;color:var(--paper)}
+#tbar.danger{background:#7a2d1ee6;animation:pulse 1s infinite}
+@keyframes pulse{50%{background:#a4402ae6}}
+#clockbox{align-self:flex-start;background:#00000070;border-radius:8px;padding:3px 9px;color:var(--dim)}
+#hint{position:absolute;bottom:8px;left:10px;right:10px;color:#d9cfb8;font-size:.9em;text-shadow:0 1px 3px #000;margin:0}
+/* ── প্রশ্ন-ফলক: লড়াইয়ের ওপর ভাসে, থামায় না ── */
+#qbar{pointer-events:auto;margin:auto auto 34px;background:#100e0bf2;border:1px solid var(--gold);border-radius:12px;
+  padding:10px 12px;max-width:min(560px,92%);box-shadow:0 12px 34px #0009}
+#qbar .qq{margin:0 0 7px;font-weight:700}
+#qbar .opts{display:grid;gap:5px}
+#qbar .opts button{display:flex;gap:8px;align-items:baseline;text-align:start;background:#ffffff0d;color:var(--paper);
+  border:1px solid var(--line);border-radius:9px;padding:8px 10px;font:inherit;min-height:44px}
+#qbar .opts button:active,#qbar .opts button:focus-visible{border-color:var(--gold);background:#ffffff1a}
+#qbar .lt{color:var(--gold);font-weight:700}
+#qbar .need{margin:7px 0 0;color:var(--dim);font-size:.85em}
+#banner{position:absolute;top:44%;left:0;right:0;text-align:center;color:#ffeec2;font-weight:700;
+  text-shadow:0 2px 10px #000,0 0 22px #000;opacity:0;transition:opacity .25s;font-size:1.05em;padding:0 14px}
+#banner.show{opacity:1}
+#toast{position:absolute;top:12%;left:50%;transform:translateX(-50%);background:#0d0b09ee;border:1px solid var(--line);
+  border-radius:10px;padding:7px 12px;max-width:88%;opacity:0;transition:opacity .2s;font-size:.9em}
+#toast.show{opacity:1}
+/* ── টাচ-প্যাড ── */
+#pad{display:none;justify-content:space-between;align-items:flex-end;gap:10px;padding:8px 0 12px}
+body.playing #pad{display:flex}
+#stick{width:120px;height:120px;border-radius:50%;background:#ffffff0d;border:1px solid var(--line);
+  position:relative;touch-action:none;flex:0 0 auto}
+#stick .knob{position:absolute;left:50%;top:50%;width:52px;height:52px;margin:-26px 0 0 -26px;border-radius:50%;
+  background:#ffffff26;border:1px solid #ffffff30}
+#btns{display:grid;grid-template-columns:repeat(3,minmax(58px,1fr));gap:7px;flex:1 1 auto;max-width:280px}
+#btns button{position:relative;min-height:52px;background:#ffffff0d;color:var(--paper);border:1px solid var(--line);
+  border-radius:11px;font:inherit;font-size:.9em;padding:2px}
+#btns button.on{background:var(--gold);color:#17140f;border-color:var(--gold)}
+#btns em{position:absolute;top:2px;right:5px;font-style:normal;font-size:.62em;color:var(--dim)}
+#btns .b6{border-color:#7a6224;color:#ffe9b0}
+/* ── সিন-পাতা ── */
+#title,#select,#read,#result{padding:14px 2px 40px}
+#title h2{margin:14px 0 6px;font-size:1.3em}
+.lead{color:var(--paper)} .soft{color:var(--dim);font-size:.9em}
+.keys{color:#7d7466;font-size:.78em;font-family:ui-monospace,monospace}
+button{cursor:pointer;font-family:inherit}
+.pri,button.mini,.go,#select button,#result button,#title button{
+  background:var(--gold);color:#17130d;border:0;border-radius:10px;padding:10px 16px;font-weight:700;min-height:44px;font-size:.95em}
+#title .soft button,.chapters button.mini{background:#ffffff10;color:var(--paper);border:1px solid var(--line);font-weight:400}
+button.mini{padding:6px 11px;border-radius:8px;font-size:.85em}
+#select ul.chapters{list-style:none;margin:10px 0 0;padding:0;display:grid;gap:8px}
+#select .chap{display:grid;grid-template-columns:auto 1fr auto;gap:4px 10px;align-items:center;width:100%;text-align:start;
+  background:var(--panel);border:1px solid var(--line);color:var(--paper);border-radius:12px;padding:10px 12px;font-weight:400}
+#select .chap .n{grid-row:span 2;font-size:1.5em;color:var(--rust);font-weight:800}
+#select .chap .t{font-weight:700;font-size:1.02em}
+#select .chap .y{color:var(--dim);font-size:.8em;grid-column:2}
+#select .chap .s{grid-row:span 2;color:var(--gold);font-size:.8em;text-align:end}
+#select .chap.off{opacity:.42}
+#read .num{color:var(--rust);font-size:1.3em;margin-inline-end:6px}
+#read .bearer{color:var(--gold);margin:2px 0 10px}
+#read ol.panels{margin:0 0 14px;padding:0;list-style:none;display:grid;gap:6px}
+#read ol.panels li{background:#ffffff08;border-inline-start:2px solid var(--rust);border-radius:0 8px 8px 0;padding:7px 11px}
+#read .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));gap:10px}
+#read .card{background:#ffffff06;border:1px solid var(--line);border-radius:11px;padding:10px 12px;transition:opacity .2s,border-color .2s}
+#read .card.disputed{border-color:#7a5a2f}
+#read .card.read{opacity:.55;border-color:#33502f}
+#read .card header{display:flex;gap:6px;align-items:center;margin-bottom:5px;flex-wrap:wrap}
+#read .chip{font-size:.72em;background:#ffffff12;border-radius:20px;padding:1px 8px;color:var(--dim)}
+#read .chip.warn{background:#6b4a15;color:#ffe6b0}
+#read .pl{color:var(--dim);font-size:.78em}
+#read .views{display:grid;gap:5px;margin:6px 0}
+#read .view{border-inline-start:2px solid var(--gold);padding-inline-start:9px}
+#read .view b{display:block;font-size:.75em;color:var(--gold)}
+#read details{font-size:.8em;color:var(--dim)}
+#read .hintline{color:var(--dim);font-size:.85em;margin:12px 0 6px}
+#read .go.ready{background:var(--good);color:#0f1a0e}
+#result{padding-top:40px}
+#result h2{color:var(--gold);margin-top:0}
+#result .brk{border-inline-start:2px solid var(--good);padding-inline-start:10px;color:#dfe8d6}
+#result .row{display:flex;gap:9px;flex-wrap:wrap;margin-top:12px}
+#pause{position:fixed;inset:0;background:#0b0a09d9;display:flex;align-items:center;justify-content:center;z-index:20}
+#pause>div{text-align:center}
+button.ok{background:var(--good)!important;color:#101a0f!important}
+@media (max-width:640px){
+  #stagebox{border-radius:0;border-inline:0}
+  #app{padding-inline:8px}
+  .bar{width:64px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

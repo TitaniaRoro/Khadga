@@ -1,0 +1,43 @@
+name: যাচাই ও প্রকাশ
+on:
+  push: { branches: [main, 'arena/**'] }
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22' }
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.12' }
+      - name: ফন্ট-সাবসেটার
+        run: python -m pip install --quiet fonttools brotli
+      - name: নির্ভরতা
+        run: npm ci
+      # সমগ্রী → টাইপ → টেস্ট → বিল্ড; প্রথমটিই ব্লকিং, কারণ ইতিহাস-দাবি আগে ঠিক হতে হবে
+      - name: ইতিহাস-সামগ্রী যাচাই
+        run: npm run validate
+      - name: টাইপচেক
+        run: npm run typecheck
+      - name: ফ্রেম-ডেটা ও লড়াই-নিয়মের টেস্ট
+        run: npm run test
+      - name: বিল্ড (docs/)
+        run: node tools/build.mjs
+      - uses: actions/upload-artifact@v4
+        with: { name: site, path: docs, retention-days: 7 }
+
+  pages:
+    needs: check
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions: { pages: write, id-token: write }
+    environment: { name: github-pages, url: ${{ steps.deployment.outputs.page_url }} }
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { name: site, path: docs }
+      - uses: actions/configure-pages@v4
+      - id: deployment
+        uses: actions/upload-pages-artifact@v3
+        with: { path: docs }

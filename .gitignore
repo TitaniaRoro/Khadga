@@ -1,0 +1,9 @@
+node_modules/
+.venv/
+docs/app.js
+docs/app.js.map
+docs/content/chapters.json
+docs/fonts/
+docs/sw.js
+*.log
+.DS_Store
