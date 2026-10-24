@@ -1,0 +1,26 @@
+{
+  "description": "খড়্গ — বাংলার মুসলিম শাসনের ইতিহাস শেখানো ব্রাউজার-লড়াই-খেলা (১২০–১৭৫৭, ৯ অধ্যায়)। সম্পূর্ণ বাংলা UI, সার্ভার নেই, ইতিহাস শুধু content/chapters.json-এ, আর্ট ছায়া-পুতুল। A serverless Bengali-language fighting game about the history of Muslim Bengal.",
+  "homepage": "https://titaniaroro.github.io/Khadga/",
+  "topics": [
+    "bengali",
+    "bangla",
+    "history-of-bengal",
+    "bengal-sultanate",
+    "mughal-bengal",
+    "islamic-history",
+    "south-asian-history",
+    "fighting-game",
+    "beat-em-up",
+    "browser-game",
+    "html5-canvas",
+    "typescript",
+    "esbuild",
+    "github-pages",
+    "serverless",
+    "educational-game",
+    "history-education",
+    "shadow-puppet",
+    "bangladesh-history",
+    "quiz"
+  ]
+}

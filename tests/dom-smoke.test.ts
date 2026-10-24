@@ -12,6 +12,15 @@ import { readFileSync, existsSync } from 'node:fs';
 const APP = new URL('../docs/app.js', import.meta.url);
 const HTML = new URL('../docs/index.html', import.meta.url);
 
+/**
+ * এই ফাইলের প্রতিটি টেস্ট বিল্ড-আউটপুট পড়ে। `npm run check` বিল্ড আগে চালায়, কিন্তু
+ * কেউ সরাসরি `npm test` চালালে (বা নতুন ক্লোনে `docs/`-এ কিছুই না থাকলে) লাল হওয়া
+ * ঠিক নয় — এড়িয়ে যাওয়াই ঠিক, কারণ দেখিয়ে। আর CI-তে (CI=true) এড়ায় না: ওখানে
+ * বিল্ড-ধাপ বাদ পড়লে নীরবে সবুজ পাওয়াটা সবচেয়ে বিপজ্জনক ব্যর্থতা।
+ */
+const BUILT = existsSync(APP) && existsSync(new URL('../docs/content/chapters.json', import.meta.url));
+const PRE = BUILT || process.env['CI'] === 'true' ? {} : { skip: 'বিল্ড নেই — আগে `npm run build` (বা `npm run check`)' };
+
 class El {
   id = ''; children: El[] = []; style: Record<string, string> = {}; dataset: Record<string, string> = {};
   // canvas গুণাবলি — রেন্ডারার এগুলো লেখে, তাই getter নয়, খাঁটা ফিল্ড
@@ -134,12 +143,12 @@ function installDom(): { body: El; byId: Map<string, El>; frameCbs: ((t: number)
   return { body, byId, frameCbs };
 }
 
-test('বিল্ড-আউটপুট বিদ্যমান', () => {
+test('বিল্ড-আউটপুট বিদ্যমান', { ...PRE }, () => {
   assert.ok(existsSync(APP), 'docs/app.js নেই — আগে npm run build');
   assert.ok(existsSync(new URL('../docs/content/chapters.json', import.meta.url)), 'docs/content/chapters.json নেই');
 });
 
-test('boot → title → অধ্যায় ১-এর ঢেউ: ৩০০ ফ্রেম, কোনো throw নয়, ক্যানভাস আঁকা হয়', async () => {
+test('boot → title → অধ্যায় ১-এর ঢেউ: ৩০০ ফ্রেম, কোনো throw নয়, ক্যানভাস আঁকা হয়', { ...PRE }, async () => {
   const dom = installDom();
   drawCalls = 0;
   await import(APP.href);
@@ -168,20 +177,20 @@ test('boot → title → অধ্যায় ১-এর ঢেউ: ৩০০ �
   assert.ok(tbar && tbar.innerHTML.includes('ঢেউ'), 'ঢেউ-ফলক ভরাট হয়নি');
 });
 
-test('কোনো id দ্বন্দ্ব নেই: index.html-এর id-গুলো অদ্বিতীয়', () => {
+test('কোনো id দ্বন্দ্ব নেই: index.html-এর id-গুলো অদ্বিতীয়', { ...PRE }, () => {
   const html = readFileSync(HTML, 'utf8');
   const ids = [...html.matchAll(/id="([\w-]+)"/g)].map((m) => m[1]!);
   assert.equal(new Set(ids).size, ids.length, `ডুপ্লিকেট id: ${ids.filter((x, i) => ids.indexOf(x) !== i).join(',')}`);
 });
 
-test('HTML-এ বাইরে-ডাকা কিছু নেই (সার্ভারলেস + অফলাইন শর্ত)', () => {
+test('HTML-এ বাইরে-ডাকা কিছু নেই (সার্ভারলেস + অফলাইন শর্ত)', { ...PRE }, () => {
   const html = readFileSync(HTML, 'utf8');
   assert.equal(/https?:\/\/(?!localhost)/.test(html), false, 'index.html-য়ে external URL আছে');
   const css = readFileSync(new URL('../docs/fonts.css', import.meta.url), 'utf8');
   assert.equal(/https?:\/\//.test(css), false, 'fonts.css-য়ে CDN আছে');
 });
 
-test('UI-তে English শব্দ নেই — দেখা-লেখা শুধু বাংলা (কী-নাম বাদে)', () => {
+test('UI-তে English শব্দ নেই — দেখা-লেখা শুধু বাংলা (কী-নাম বাদে)', { ...PRE }, () => {
   const html = readFileSync(HTML, 'utf8');
   const visible = html
     .replace(/<script[\s\S]*?<\/script>/g, '').replace(/<style[\s\S]*?<\/style>/g, '')
