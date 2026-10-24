@@ -6,22 +6,26 @@
  * বাজেট: পুরো সাইট ≤ ৬MB (design §৬)। ছাড়ালে বিল্ড ফেল করে।
  */
 import { build } from 'esbuild';
-import { mkdirSync, copyFileSync, readFileSync, writeFileSync, statSync, rmSync, readdirSync } from 'node:fs';
+import { mkdirSync, copyFileSync, readFileSync, writeFileSync, statSync, rmSync, readdirSync, existsSync } from 'node:fs';
 import { dirname, join, resolve, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const out = join(root, 'docs');
-const PY = join(root, '.venv', 'bin', 'python');
 const BUDGET = 6 * 1024 * 1024;
 
+/* বডি-ফন্ট Hind Siliguri, কিন্তু ওর নিজের বাংলা-সাবসেট ৬৯KB (দুই ওয়েটে ১৪০KB) —
+   তাই বাংলা গ্লিফ Noto Sans Bengali-র কাছ থেকে নিই (৪৪+৪৬KB),আর Hind-এর ল্যাটিন
+   সাবসেট (১৪+১৪KB) শুধু J/K/L/১২০৪-র মতো ল্যাটিন-অংশের জন্য। মোট ~১২১KB,
+   একই ফল Hind-এর বাংলা সাবসেট নিলে ২১৩KB। তাই ভাঙা-মিশ্রণটাই সস্তা। */
+const BN_RANGE = 'U+0980-09FF,U+0964,U+0965,U+2013,U+2014,U+2018-U+201D,U+2026,U+00A0';
+const LA_RANGE = 'U+0020-007E,U+00A0';
 const fonts = [
-  { name: 'Hind Siliguri', wght: 400, style: 'normal', file: '@fontsource/hind-siliguri/files/hind-siliguri-latin-400-normal.woff2' },
-  { name: 'Hind Siliguri', wght: 700, style: 'normal', file: '@fontsource/hind-siliguri/files/hind-siliguri-latin-700-normal.woff2' },
-  { name: 'Noto Sans Bengali', wght: 400, style: 'normal', file: '@fontsource/noto-sans-bengali/files/noto-sans-bengali-bengali-400-normal.woff2' },
-  { name: 'Noto Sans Bengali', wght: 700, style: 'normal', file: '@fontsource/noto-sans-bengali/files/noto-sans-bengali-bengali-700-normal.woff2' },
+  { name: 'Hind Siliguri', wght: 400, subset: 'latin', range: LA_RANGE, file: '@fontsource/hind-siliguri/files/hind-siliguri-latin-400-normal.woff2' },
+  { name: 'Hind Siliguri', wght: 700, subset: 'latin', range: LA_RANGE, file: '@fontsource/hind-siliguri/files/hind-siliguri-latin-700-normal.woff2' },
+  { name: 'Noto Sans Bengali', wght: 400, subset: 'bengali', range: BN_RANGE, file: '@fontsource/noto-sans-bengali/files/noto-sans-bengali-bengali-400-normal.woff2' },
+  { name: 'Noto Sans Bengali', wght: 700, subset: 'bengali', range: BN_RANGE, file: '@fontsource/noto-sans-bengali/files/noto-sans-bengali-bengali-700-normal.woff2' },
 ];
 
 // docs/ = বিল্ড-আউটপুট এবং পড়া-নথি দুটোরই জায়গা; তাই পুরো ফোল্ডার মুছবো না,
@@ -50,26 +54,22 @@ copyFileSync(join(root, 'content', 'chapters.json'), join(out, 'content', 'chapt
 copyFileSync(join(root, 'web', 'index.html'), join(out, 'index.html'));
 copyFileSync(join(root, 'web', 'styles.css'), join(out, 'styles.css'));
 
-// ৩) ফন্ট সাবসেটিং — পুরো বাংলা ব্লক + ল্যাটিন + বিরাম-চিহ্ন, যাতে ভবিষ্যতের কার্ডও ছাটে
-const unicodes = ['U+0980-09FF', 'U+0020-007E', 'U+00A0', 'U+0964', 'U+0965', 'U+2013', 'U+2014', 'U+2018-U+201D', 'U+2026', 'U+00B7', 'U+25CF', 'U+2713'].join(',');
+// ৩) ফন্ট: fontsource নিজেই unicode-range-অনুযায়ী সাবসেট করা woff2 দেয়
+// (bengali/…-400-normal.woff2 আলাদা, latin/… আলাদা) — তাই এখানে আর pyftsubset চলে না।
+// আগে চলাত, কিন্তু মাপ পরীক্ষায় ধরা পড়েছে ফল শূন্য: আউটপুট ইনপুটের বাইট-সমান
+// (৪৫,২৮৪B → ৪৫,২৮৪B)। মানে পুরো Python/fontTools নির্ভরতাটা অর্থহীন ঝামেলা,
+// আর CI-তে fontTools না-পেলে চুপচাপ অসাবসেটেড ফাইল কপি হতো। এখন সরাসরি কপি।
 const faceLines = [];
 for (const f of fonts) {
   const src = join(root, 'node_modules', f.file);
+  if (!existsSync(src)) { console.error(`✗ ফন্ট নেই: ${f.file} — npm ci চালান`); process.exit(1); }
   const dest = join(out, 'fonts', `${f.name.toLowerCase().replace(/\s+/g, '-')}-${f.wght}.woff2`);
-  const args = [src, `--flavor=woff2`, `--output-file=${dest}`, `--unicodes=${unicodes}`,
-    '--layout-features=kern,liga,ccmp,rlig,akhn,haln,pref,blwf,abvs,psts,half,ss01',
-    '--ignore-missing-unicodes', '--desubroutinize'];
-  try {
-    execFileSync(PY, ['-m', 'fontTools.subset', ...args], { stdio: 'pipe' });
-  } catch (e) {
-    console.warn(`  ফন্ট সাবসেট ব্যর্থ (${f.name} ${f.wght}): ${String(e.stderr ?? e).slice(0, 160)} — মূল ফাইল কপি করা হলো`);
-    copyFileSync(src, dest);
-  }
+  copyFileSync(src, dest);
   const kb = Math.round(statSync(dest).size / 1024);
-  console.log(`  ${f.name} ${f.wght} → ${kb}KB`);
-  faceLines.push(`@font-face{font-family:'${f.name}';font-style:${f.style};font-weight:${f.wght};font-display:swap;
-  src:url('fonts/${dest.split('/').pop()}') format('woff2');
-  unicode-range:${f.name === 'Noto Sans Bengali' ? 'U+0980-09FF,U+00A0,U+2013,U+2014,U+2018-U+201D,U+2026,U+0964,U+0965' : 'U+0020-007E,U+00A0'};}`);
+  console.log(`  ${f.name} ${f.wght} (${f.subset}) → ${kb}KB`);
+  faceLines.push(`@font-face{font-family:'${f.name}';font-style:normal;font-weight:${f.wght};font-display:swap;\
+  src:url('fonts/${dest.split('/').pop()}') format('woff2');\
+  unicode-range:${f.range};}`);
 }
 writeFileSync(join(out, 'fonts.css'), faceLines.join('\n'), 'utf8');
 

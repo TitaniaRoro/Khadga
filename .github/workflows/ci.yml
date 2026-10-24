@@ -10,10 +10,6 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: '22' }
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.12' }
-      - name: ফন্ট-সাবসেটার
-        run: python -m pip install --quiet fonttools brotli
       - name: নির্ভরতা
         run: npm ci
       # সমগ্রী → টাইপ → টেস্ট → বিল্ড; প্রথমটিই ব্লকিং, কারণ ইতিহাস-দাবি আগে ঠিক হতে হবে
