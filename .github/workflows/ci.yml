@@ -37,6 +37,13 @@ jobs:
       - name: বিল্ড (docs/)
         run: node tools/build.mjs
 
+      # README যেন কখনও মিথ্যা সংখ্যা না বলে: টেবিল ও ব্যাজ content/ ও src/frames.ts থেকে
+      # পুনরুত্পাদন করে মিলিয়ে দেখা হয় — পাতা পুরোনো থাকলে এই ধাপটাই লাল হয়।
+      - name: README তাজা
+        run: |
+          node tools/readme.mjs
+          git diff --exit-code README.md || { echo "✗ README পুরোনো — npm run readme চালান"; exit 1; }
+
       - name: লড়াই-নিয়মের টেস্ট
         run: npm run test
 
