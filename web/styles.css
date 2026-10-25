@@ -123,3 +123,26 @@ button.ok{background:var(--good)!important;color:#101a0f!important}
 #read details.lore[open] > summary::before { content: '－ '; }
 #read .fineprint { color: rgba(240,230,207,.62); font-size: .84em; }
 #result .mini { margin-left: .4em; }
+
+/* ── আর্কেড-রূপ ───────────────────────────────────────────────────────────
+   পিক্সেল-মোডে ক্যানভাস আসলেই অর্ধ-রেজ্যোলিউশনে আঁকা হয় (src/render.ts), এখানে
+   শুধু nearest-neighbour-প্রসারণ। HUD/প্যানেলগুলো নরম গোল কোণ থেকে ক্যাবিনেট-
+   চওড়া ফ্রেমে বদলায় — 'সব কিছু সমতল কার্ডের মতো' অভিযোগের বাকি অংশ এখানেই। */
+#stage { image-rendering: pixelated; image-rendering: crisp-edges; }
+#hudtop, #hud, #tbar, .card, .panel, #result > *, #title > *, #select > *, #read > * {
+  border-radius: 0;
+}
+#hudtop { box-shadow: 0 3px 0 rgba(0,0,0,.55); border-bottom: 3px solid #0c0a08; }
+.bar { height: 15px; border: 2px solid #0c0a08; box-shadow: inset 0 -3px 0 rgba(0,0,0,.4), 0 2px 0 rgba(0,0,0,.45); background: #1b1712; }
+.bar > i { box-shadow: inset 0 3px 0 rgba(255,255,255,.22); }
+button, .chip, .mini, .go, .pri {
+  border-radius: 0; border: 2px solid #0c0a08; box-shadow: 0 3px 0 rgba(0,0,0,.55);
+}
+button:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,.55); }
+#toast, #banner { border: 2px solid #0c0a08; box-shadow: 0 3px 0 rgba(0,0,0,.5), inset 0 2px 0 rgba(255,255,255,.08); }
+#app::after {
+  /* পুরো মঞ্চ জুড়ে হালকা ভিনিয়েট — পিক্সেল-বাফারের CRT-পটির সঙ্গে মিলিয়ে */
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 9;
+  background: radial-gradient(120% 92% at 50% 46%, transparent 58%, rgba(6,5,4,.42) 100%);
+}
+@media (prefers-reduced-motion: reduce) { #app::after { display: none; } }
