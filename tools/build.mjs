@@ -30,10 +30,15 @@ const fonts = [
 
 // docs/ = বিল্ড-আউটপুট এবং পড়া-নথি দুটোরই জায়গা; তাই পুরো ফোল্ডার মুছবো না,
 // শুধু যন্ত্র-বানানো ফাইলগুলো মুছবো। design-khadga.md / content-preview.html অক্ষত থাকবে।
-const GENERATED = ['index.html', 'app.js', 'styles.css', 'fonts.css', 'sw.js', 'content', 'fonts'];
+const GENERATED = ['index.html', 'app.js', 'styles.css', 'fonts.css', 'sw.js', 'content', 'fonts', 'og.png'];
 for (const g of GENERATED) rmSync(join(out, g), { recursive: true, force: true });
 mkdirSync(join(out, 'content'), { recursive: true });
 mkdirSync(join(out, 'fonts'), { recursive: true });
+
+// সোশ্যাল-ছবি (og:image) খেলার আসল ফ্রেম থেকে তোলা হয় — `npm run hero`।
+// না থাকলেও বিল্ড চলবে: তখন শুধু meta-তে ছবি-ঠিকানা ভাঙা লেগে থাকবে, সেটা
+// build শেষে সতর্কতা হিসেবে বলা হয় (CI ভাঙানোর মতো ব্যাপার নয়)।
+if (existsSync(join(root, 'assets/og.png'))) copyFileSync(join(root, 'assets/og.png'), join(out, 'og.png'));
 
 // ১) বান্ডেল
 const t0 = Date.now();

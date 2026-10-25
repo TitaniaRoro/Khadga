@@ -194,3 +194,63 @@ test('জোরপূর্বক-রূপান্তর কোনো কা�
     }
   }
 });
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * playtest-রোবট ধরা তিনটা ত্রুটির প্রতি-পরীক্ষা (npm run playtest)।
+ * এগুলোর আগে ২৭টা টেস্ট সবুজ ছিল, অথচ খেলাটা খেলে দ্বন্দ্ব কখনও শেষ হতো না
+ * আর শত্রু পেছন-দিকটা কাটতে থাকত। টেস্ট-সবুজ ≠ খেলা-চলে।
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+test('দ্বন্দ্বের বস প্রাণ-শেষ করা যায় না — জয়ের পথ ঢাল-ভাঙা ও সত্যি', () => {
+  const sim = new Sim(ch1, doc.meta, 'duel', 5);
+  const boss = sim.enemies[0]!;
+  for (let t = 0; t < 900; t++) {
+    const inp = { ...emptyInput(), moveX: 0, pressed: sim.player.actionable ? ('heavy' as const) : null };
+    if (sim.duel.question) inp.answer = sim.duel.question.answer;
+    sim.step(inp);
+    if (sim.over) break;
+  }
+  assert.equal(sim.enemies.length, 1, 'বস তালিকা থেকে হারায় না — হারালে boss.phase পড়ে ক্র্যাশ করত');
+  assert.ok(boss.hp >= Math.round(MAX_HP * 0.25), 'বস HP-র নিচের সীমার নিচে নামে না');
+  if (sim.over === 'win') assert.ok(sim.duel.truths >= sim.duel.needs, 'জয় হলে সেটা তিন সত্যি দিয়ে, বস-মারা দিয়ে নয়');
+});
+
+test('দ্বন্দ্বের ঘড়ি শেষ হলে লড়াই থামে (আগে চিরকাল চলত)', () => {
+  const sim = new Sim(ch1, doc.meta, 'duel', 3);
+  sim.timeLeft = 2;
+  sim.step(emptyInput());
+  sim.step(emptyInput());
+  assert.equal(sim.over, 'lose');
+  assert.match(sim.loseWhy_bn, /সময়/);
+});
+
+test('খেলোয়াড় পেছনে চলে গেলে প্রতিপক্ষ ঘোরে, ফাঁকা বাতাস কাটে না', () => {
+  const sim = new Sim(ch1, doc.meta, 'wave', 9);
+  const e = sim.enemies[0]!;
+  e.x = 200; e.phase = 'idle'; e.move = null; e.stunLeft = 0;
+  sim.player.x = 400; sim.player.phase = 'idle'; sim.player.move = null;
+  assert.equal(e.facing, 0, 'শুরুতে বাঁ দিকে মুখ');
+  sim.step(emptyInput());
+  assert.equal(e.facing, 1, 'ডান দিকের লক্ষ্যের দিকে ফেরে');
+  sim.player.x = 60;
+  sim.step(emptyInput());
+  assert.equal(e.facing, 0, 'লক্ষ্য পাল্টালে আবার বাঁ দিকে');
+});
+
+test('ব্লক না করলেও টানা চাপে ঢাল ভাঙে — তারপর প্রশ্ন আসে', () => {
+  // মেকানিক্সের একক-পরীক্ষা (রোবটের দক্ষতায় নয়): ঢাল-শোষণ guardSoak ছাড়া
+  // 'ঢাল ভাঙো → সত্যি দাও' চক্রটা প্রতিপক্ষের এলোমেলো ব্লক-ভাগ্যের ওপর দাঁড়াত।
+  const sim = new Sim(ch1, doc.meta, 'duel', 11);
+  const boss = sim.enemies[0]!;
+  boss.phase = 'idle'; boss.move = null;
+  boss.guard = 40;
+  const att = { reach: 1, dmg: 10, guardDmg: 34, high: false, kind: 'heavy' as const };
+  assert.ok(boss.receive(att, sim.player).kind !== 'block', 'ঢাল তোলা নেই — তবু ঢাল-ক্ষমতা কটে');
+  assert.ok(boss.guard < 40, 'ঢাল-ক্ষমতা কমেছে');
+  boss.phase = 'idle'; boss.move = null; boss.stunLeft = 0;
+  boss.guard = 6;
+  assert.equal(boss.receive(att, sim.player).kind, 'guardbreak', 'ঢাল-ক্ষমতা ফুরালে ঢাল ভাঙে');
+  assert.equal(boss.phase, 'stunned');
+  sim.step(emptyInput());
+  assert.ok(sim.duel.question !== null, 'ঢাল-ভাঙা ফ্রেমে ইতিহাসের প্রশ্ন ওঠে');
+});

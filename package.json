@@ -13,13 +13,16 @@
     "build": "node tools/validate.mjs && tsc --noEmit && node tools/build.mjs",
     "check": "npm run validate && npm run typecheck && node tools/build.mjs && npm run test && node tools/preview.mjs",
     "serve": "python3 -m http.server 8124 --bind 0.0.0.0 --directory docs",
-    "readme": "node tools/readme.mjs"
+    "readme": "node tools/readme.mjs",
+    "playtest": "node --experimental-strip-types tools/playtest.mjs",
+    "hero": "node --experimental-strip-types tools/hero.mjs"
   },
   "dependencies": {
     "@fontsource/hind-siliguri": "5.2.5",
     "@fontsource/noto-sans-bengali": "5.2.5"
   },
   "devDependencies": {
+    "@napi-rs/canvas": "^1.0.13",
     "@types/node": "22.15.3",
     "esbuild": "0.25.12",
     "typescript": "5.9.3"

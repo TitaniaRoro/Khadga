@@ -1,5 +1,5 @@
 <a href="https://titaniaroro.github.io/Khadga/">
-  <img src="assets/hero.jpg" alt="দুই খড়্গধর ছায়া-পুতুলের ছায়ায় মুখোমুখি — মাঝে ধানের শীষ ও নৌকা" width="100%">
+  <img src="assets/hero.jpg" alt="খেলার আসল দুই ফ্রেম: বাঁয়ে অধ্যায় ১-এর ঢেউ-লড়াই (নৌকা বাঁচাও), ডানে অধ্যায় ৮-এর দ্বন্দ্ব (ঢাল ভাঙো, সত্যি দাও) — সব ছায়া-পুতুল কোডে আঁকা" width="100%">
 </a>
 
 <h1 align="center" style="font-size:2.6em;letter-spacing:.06em">খড়্গ</h1>
@@ -15,7 +15,7 @@
   <img src="https://img.shields.io/badge/UI-100%25_Bangla-c0392b?style=flat-square" alt="পুরো UI বাংলা">
   <img src="https://img.shields.io/badge/backend-none-12100e?style=flat-square" alt="কোনো ব্যাকএন্ড নেই">
   <img src="https://img.shields.io/badge/site-0.32MB-2e7d32?style=flat-square" alt="সাইজ">
-  <img src="https://img.shields.io/badge/tests-27%20pass-1565c0?style=flat-square" alt="টেস্ট">
+  <img src="https://img.shields.io/badge/tests-31%20pass-1565c0?style=flat-square" alt="টেস্ট">
   <img src="https://img.shields.io/badge/code-GPL--3.0-6d4c41?style=flat-square" alt="কোড GPL-3.0">
   <img src="https://img.shields.io/badge/content-CC%20BY--SA%204.0-6d4c41?style=flat-square" alt="সামগ্রী CC BY-SA 4.0">
 </p>
@@ -37,7 +37,7 @@
 | **লড়াই** | ১৭টি ঢেউ (রক্ষা-মিশন) + ৮টি দ্বন্দ্ব (ঢাল-ভাঙা + প্রশ্ন)। জয়ের শর্ত সর্বদা *কিছু বাঁচানো*, কখনও *সব মারা* নয় |
 | **পড়াশোনা** | ৯০টি কার্ড লড়াইয়ের মাঝখানেই ওপেন হয়; ৩৭টি "বর" কার্ড-পড়া চালু করে; ৩৫টি প্রশ্ন ঢাল ভাঙলেই আসে |
 | **আর্ট** | চামড়ার ছায়া-পুতুলের সিলুয়েট — পটভূমির ওপর কালো ছাড়া কিছু নেই। রক্ত, খোঁচা-আঘাত, মৃতদেহ নেই |
-| **সাইজ** | খেলা ০.৩২MB (ফন্টসহ), নকশা-ব্রিফসহ সাইট ০.৩৭MB; ৬MB-তে ছাড়ালে **বিল্ড থামে** |
+| **সাইজ** | খেলা ০.৩২MB (ফন্টসহ), নকশা-ব্রিফসহ সাইট ০.৩৮MB; ৬MB-তে ছাড়ালে **বিল্ড থামে** |
 | **নির্ভরতা** | প্রোডাকশনে দুটো ফন্টই — Hind Siliguri ১৪+১৪KB, Noto Sans Bengali ৪৪+৪৬KB (মোট ১১৮KB)। বাকি সব ভ্যানিলা টাইপস্ক্রিপ্ট + ক্যানভাস |
 | **অফলাইন** | Service Worker, কোনো CDN/অ্যানালিটিক্স/ট্র্যাকার নেই — একবার খুললে পরে ইন্টারনেট লাগে না |
 | **লাইসেন্স** | কোড GPL-3.0 · সামগ্রী CC BY-SA 4.0 · [CREDITS.md](CREDITS.md) |
@@ -128,9 +128,11 @@ python3 -m http.server 8124 --bind 0.0.0.0 --directory docs
 | `npm run validate` | `content/chapters.json`-এ ৬২টি নিয়ম-কোড; একটিও ভাঙলে বিল্ড ওঠে না |
 | `npm run typecheck` | `tsc --noEmit` |
 | `npm run build` | validate + typecheck + esbuild + ফন্ট-কপি + SW → `docs/` (সাইজ-বাজেটে থামায়) |
-| `npm test` | ২৭টি টেস্ট; `docs/` না থাকলে DOM-স্মোক ৫টি কারণ দেখিয়ে `skip` করে (CI-তে ফেল) |
+| `npm test` | ৩১টি টেস্ট; `docs/` না থাকলে DOM-স্মোক ৫টি কারণ দেখিয়ে `skip` করে (CI-তে ফেল) |
 | `npm run preview` | `docs/content-preview.html` |
 | `npm run serve` | `docs/` স্ট্যাটিক সার্ভার |
+| `npm run playtest` | রোবট প্রতিটি অধ্যায় দুই ধরনে খেলে দেখায়: জয়/পরাজয় আর আটকানো ক্র্যাশ |
+| `npm run hero` | README-র হেরো ও `og.png` — খেলার আসল রেন্ডারার থেকে ফ্রেম তুলে নেয় |
 
 `docs/` ট্র্যাক করা হয় না (বিল্ড-আউটপুট) — নিচে থাকে শুধু [design-khadga.md](docs/design-khadga.md)।
 
@@ -190,7 +192,7 @@ src/render.ts          ছায়া-পুতুল রেন্ডারা�
 src/hud.ts src/game.ts মিটার, কার্ড, দ্বন্দ্ব-প্রশ্ন, সিন-মেশিন
 src/main.ts            boot — একমাত্র DOM-ছুঁয়ে থাকা ফাইল
 web/                   index.html + styles.css (উৎস; বিল্ড `docs/`-এ কপি করে)
-tests/                 ৯ (frames) + ১৩ (sim) + ৫ (dom-smoke) = ২৭
+tests/                 ৯ (frames) + ১৭ (sim) + ৫ (dom-smoke) = ৩১
 docs/design-khadga.md  নকশা-ব্রিফ ও সিদ্ধান্ত-রেকর্ড
 .github/workflows/ci.yml  যাচাই ও প্রকাশ · .github/repo-meta.json  রেপোর About/টপিক/হোমপেজ
 ```
@@ -202,7 +204,7 @@ docs/design-khadga.md  নকশা-ব্রিফ ও সিদ্ধান্
 | দাবি | অবস্থা |
 |---|---|
 | সামগ্রীর ৬২টি নিয়ম | ✅ প্রতি বিল্ডে, `main`-এর CI-তেও |
-| লড়াই-নিয়ম, ঢেউ-জয়/পরাজয়, দ্বন্দ্বের ৩-উত্তর, মিটার-নীতি, রিসেড-ধার্যতা | ✅ ২৭টি টেস্ট |
+| লড়াই-নিয়ম, ঢেউ-জয়/পরাজয়, দ্বন্দ্বের ৩-উত্তর, মিটার-নীতি, রিসেড-ধার্যতা | ✅ ৩১টি টেস্ট |
 | boot হয়, HUD ভরে, external URL/CDN নেই, বাংলা লিপি | ✅ DOM-স্মোক ৫টি |
 | টাইপ, সাইজ-বাজেট | ✅ `tsc` + বিল্ড |
 | **ইনপুটের অনুভূতি, সত্যিকারের ফ্রেম-রেট, মোবাইল টাচ** | ⚠️ কোনো আসল ব্রাউজারে এখনও চোখে দেখা হয়নি |
@@ -235,6 +237,6 @@ gh api -X PUT   repos/Titaniaroro/Khadga/pages -f build_type=workflow        # �
 
 <p align="center"><sub>
 <b>লাইসেন্স:</b> কোড <a href="LICENSE">GPL-3.0</a> · সামগ্রী CC BY-SA 4.0 — <a href="CREDITS.md">ফন্ট, উৎস ও চিত্রের কৃতজ্ঞতা</a> · <a href="docs/design-khadga.md">নকশা-ব্রিফ</a><br>
-হেরো-চিত্র ১৪২KB JPEG — AI-জেনারেটেড ছায়া-পুতুল-ধাঁচের মকআপ, গেম-আর্টের স্থায়ী সিদ্ধান্ত নয়<br>
+হেরো-চিত্র ৭৭KB — আগের AI-মকআপটা বাদ; দুটো ফ্রেমই `tools/hero.mjs` **আসল** সিম ও রেন্ডারার নোডে চালিয়ে তুলেছে (`npm run hero`), তাই ছবি খেলার চেহারার সঙ্গে মেলে। শৈলীর সিদ্ধান্ত তবু M0-রই: flat ছায়া-পুতুল<br>
 এই পাতাটি <code>node tools/readme.mjs</code> থেকে জেনারেট হয়: টেবিল, ফ্রেম-ডেটা, ব্যাজের সংখ্যা — সব <code>content/</code>, <code>src/frames.ts</code> ও <code>docs/</code> থেকে তোলা। সম্পাদনা করতে চাইলে টুলটাই বদলান, তাহলে কিছু পুরোনো থাকবে না
 </sub></p>

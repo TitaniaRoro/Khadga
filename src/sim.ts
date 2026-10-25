@@ -9,7 +9,7 @@
  *     ভুল উত্তরে প্রাণ কমে না, সঠিক উত্তরেই সংকল্প-মিটার পূর্ণ হয়।
  */
 import { Fighter, type HitEvent } from './fighter.ts';
-import { MOVES, MAX_HP, type InputName } from './frames.ts';
+import { MAX_GUARD, MOVES, MAX_HP, type InputName } from './frames.ts';
 import type { Chapter, Card, Meta, QuizItem } from './content-types.ts';
 import { damageFactor } from './content-types.ts';
 
@@ -130,7 +130,12 @@ export class Sim {
       const b = ch.boss;
       this.enemies = [new Fighter({ name_bn: b?.name_bn ?? 'প্রতিপক্ষ', tone: '#b4553d', facing: 0, x: 320, y: 0, defense: 1 })];
       this.enemies[0]!.hp = Math.round(MAX_HP * 1.35);
-      this.enemies[0]!.guard = 160;
+      this.enemies[0]!.guard = MAX_GUARD;   // আগে ১৬০ দেওয়া ছিল, কিন্তু refillGuard-এর ছাদ ১০০ — বাড়তি অংশ প্রথম ঢাল-ফেরাতেই মিলিয়ে যেত
+      // দ্বন্দের জয়-শর্ত = ঢাল ভেঙে তিন সত্যি, বসকে রক্তপাতে মারা নয় (design §৩)।
+      // আগে বসও মরত, তারপর enemies[0] অদৃশ্য হয়ে `boss.phase`-তে টাইপ-ক্র্যাশ—
+      // পুরোনো টেস্ট সেটা ধরত না, `npm run playtest`-এর রোবট ধরেছে।
+            this.enemies[0]!.hpFloor = Math.round(MAX_HP * 0.25);
+      this.enemies[0]!.guardSoak = 0.45;
       if (b) this.events.push({ t: 'banner', text: b.myth_bn, card: 'boss' });
     }
     if (this.allyWanted()) {
@@ -221,9 +226,18 @@ export class Sim {
     this.frame += 1;
     if (this.timeLeft > 0) this.timeLeft -= 1;
 
+    if (this.timeLeft <= 0) {
+      if (this.mode === 'wave') { this.over = 'win'; this.events.push({ t: 'win' }); return this.events; }
+      // দ্বন্দ্বেরও শেষ থাকতে হবে: আগে ৯৯৯-সেকেন্ডের ঘড়ি শেষ হলেও কিছুই হতো না,
+      // মানে ঢাল না ভাঙা দ্বন্দ্ব চিরকাল চালু থাকত (playtest-এ ধরা পড়েছে)।
+      this.over = 'lose';
+      this.loseWhy_bn = 'দ্বন্দ্বের সময় ফুরিয়ে গেছে — ঢাল ভাঙার সুযোগগুলো যেতে দিয়েছ। তিন সত্যি আগে, তারপর তীক্ষ্ণতা।';
+      this.events.push({ t: 'lose', why_bn: this.loseWhy_bn });
+      return this.events;
+    }
     if (this.mode === 'duel') this.duelTick(input);
-    else if (this.timeLeft <= 0) { this.over = 'win'; this.events.push({ t: 'win' }); return this.events; }
 
+    this.faceTargets();
     if (input.pressed && this.player.actionable) {
       if (input.pressed === 'guard') this.player.start('guard');
       else this.player.start(input.pressed);
@@ -260,7 +274,7 @@ export class Sim {
         this.events.push({ t: 'lose', why_bn: this.loseWhy_bn });
       }
     } else {
-      const boss = this.enemies[0]!;
+      const boss = this.enemies[0];
       if (this.duel.truths >= this.duel.needs) {
         this.over = 'win';
         if (this.ch.boss) this.events.push({ t: 'break', text: this.ch.boss.breakline_bn });
@@ -269,6 +283,8 @@ export class Sim {
         this.over = 'lose';
         this.loseWhy_bn = 'ঢাল ভাঙার সুযোগ হাতছাড়া — প্রাণ ফুরিয়ে গেছে।';
         this.events.push({ t: 'lose', why_bn: this.loseWhy_bn });
+      } else if (!boss) {
+        // প্রতিপক্ষ নেই — স্বাভাবিকত সম্ভব নয়, তবু ক্র্যাশের বদলে লড়াই চলুক।
       } else if (boss.phase === 'stunned' && !this.duel.question) {
         this.askQuestion();
       } else if (boss.phase !== 'stunned' && this.duel.question) {
@@ -285,12 +301,13 @@ export class Sim {
   /** ঢাল-ক্ষমতা ধীরে ফেরে — রোধ-চাপা খেলোয়াড়কে চিরকাল পাহারা দিতে দেয় না। */
   private guardRegen(): void {
     for (const f of [this.player, ...this.enemies]) {
-      if (f.phase !== 'guard' && f.guard < 100) f.refillGuard(0.35);
+      if (f.phase !== 'guard' && f.guard < MAX_GUARD && f.chipAge > 40) f.refillGuard(0.35);
     }
   }
 
   private duelTick(input: InputFrame): void {
-    const boss = this.enemies[0]!;
+    const boss = this.enemies[0];
+    if (!boss) return;
     if (this.duel.cooldown > 0) this.duel.cooldown -= 1;
     if (input.answer !== null && this.duel.question) {
       const q = this.duel.question;
@@ -351,6 +368,24 @@ export class Sim {
     return best;
   }
 
+  /**
+   * মোকাবিলা-নিয়ম: নিজের আঘাতে ব্যস্ত না থাকলে প্রত্যেকে লক্ষ্যের দিকে ফেরে।
+   * এর আগে facing জন্মের পর স্থির — খেলোয়াড় শত্রুর পাশ কাটিয়ে পেছনে দাঁড়ালে
+   * শত্রু চিরকাল ফাঁকা বাতাস কাটত, দ্বন্দ্বের বসও পাল্টা আঘাত করত না। ফলে
+   * 'অমার' রোবট ৮/৮ ঢেউ জিতেছিল আর সব দ্বন্দ্ব অমীমাংসিত থেকে গেছে।
+   */
+  private faceTargets(): void {
+    if (this.player.alive) {
+      for (const e of this.enemies) {
+        if (e.busy) continue;
+        const tx = e.targetObjective && this.objective ? this.objective.x : this.player.x;
+        e.facing = tx >= e.x ? 1 : 0;
+      }
+    }
+    const foe = this.enemies.filter((e) => e.alive).sort((a, b) => Math.abs(a.x - this.player.x) - Math.abs(b.x - this.player.x))[0];
+    if (foe && !this.player.busy) this.player.facing = foe.x >= this.player.x ? 1 : 0;
+  }
+
   private aiTick(e: Fighter): void {
     const dx = this.player.x - e.x;
     const dy = this.player.y - e.y;
@@ -363,7 +398,11 @@ export class Sim {
         e.x += Math.sign(dx) * sp * (wantY ? 0.7 : 1);
         if (wantY) e.y += Math.sign(dy) * sp * 0.7;
       }
-      if (dist < MOVES.thrust.reach && this.rand() < aggro * 0.06) {
+      // দ্বন্দের চক্রটা 'ঢাল ভাঙো → সত্যি দাও', আর ঢাল-ক্ষতি জমে শুধু প্রতিপক্ষ
+      // ঢাল তুলে রাখলেই। আগে বস ১.২% ফ্রেমে ঢাল তুলত, মানে ঢাল ভাঙাই সম্ভব ছিল না—
+      // তিন সত্যি কেউ আদায় করতে পারত না, দ্বন্দ্ব কেবল হেঁটে-হেঁটে কাটত।
+      if (this.mode === 'duel' && dist < MOVES.cut.reach + 30 && e.guard > 0 && this.rand() < 0.3) e.start('guard');
+      else if (dist < MOVES.thrust.reach && this.rand() < aggro * 0.06) {
         const pick: InputName = this.rand() < 0.2 ? 'heavy' : this.rand() < 0.5 ? 'thrust' : 'cut';
         e.start(pick);
       } else if (this.rand() < 0.012) e.start('guard');
@@ -427,7 +466,7 @@ export class Sim {
         }
       }
     }
-    this.enemies = this.enemies.filter((e) => e.alive || this.frame < 40);
+    if (this.mode === 'wave') this.enemies = this.enemies.filter((e) => e.alive || this.frame < 40);
   }
 }
 

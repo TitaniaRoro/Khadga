@@ -1,5 +1,5 @@
 <a href="https://titaniaroro.github.io/Khadga/">
-  <img src="assets/hero.jpg" alt="দুই খড়্গধর ছায়া-পুতুলের ছায়ায় মুখোমুখি — মাঝে ধানের শীষ ও নৌকা" width="100%">
+  <img src="assets/hero.jpg" alt="খেলার আসল দুই ফ্রেম: বাঁয়ে অধ্যায় ১-এর ঢেউ-লড়াই (নৌকা বাঁচাও), ডানে অধ্যায় ৮-এর দ্বন্দ্ব (ঢাল ভাঙো, সত্যি দাও) — সব ছায়া-পুতুল কোডে আঁকা" width="100%">
 </a>
 
 <h1 align="center" style="font-size:2.6em;letter-spacing:.06em">খড়্গ</h1>
@@ -118,6 +118,8 @@ python3 -m http.server 8124 --bind 0.0.0.0 --directory docs
 | `npm test` | %%TESTS%%টি টেস্ট; `docs/` না থাকলে DOM-স্মোক «5»টি কারণ দেখিয়ে `skip` করে (CI-তে ফেল) |
 | `npm run preview` | `docs/content-preview.html` |
 | `npm run serve` | `docs/` স্ট্যাটিক সার্ভার |
+| `npm run playtest` | রোবট প্রতিটি অধ্যায় দুই ধরনে খেলে দেখায়: জয়/পরাজয় আর আটকানো ক্র্যাশ |
+| `npm run hero` | README-র হেরো ও `og.png` — খেলার আসল রেন্ডারার থেকে ফ্রেম তুলে নেয় |
 
 `docs/` ট্র্যাক করা হয় না (বিল্ড-আউটপুট) — নিচে থাকে শুধু [design-khadga.md](docs/design-khadga.md)।
 
@@ -222,6 +224,6 @@ gh api -X PUT   repos/Titaniaroro/Khadga/pages -f build_type=workflow        # �
 
 <p align="center"><sub>
 <b>লাইসেন্স:</b> কোড <a href="LICENSE">GPL-3.0</a> · সামগ্রী CC BY-SA 4.0 — <a href="CREDITS.md">ফন্ট, উৎস ও চিত্রের কৃতজ্ঞতা</a> · <a href="docs/design-khadga.md">নকশা-ব্রিফ</a><br>
-হেরো-চিত্র «%%HERO_KB%%»KB JPEG — AI-জেনারেটেড ছায়া-পুতুল-ধাঁচের মকআপ, গেম-আর্টের স্থায়ী সিদ্ধান্ত নয়<br>
+হেরো-চিত্র «%%HERO_KB%%»KB — আগের AI-মকআপটা বাদ; দুটো ফ্রেমই `tools/hero.mjs` **আসল** সিম ও রেন্ডারার নোডে চালিয়ে তুলেছে (`npm run hero`), তাই ছবি খেলার চেহারার সঙ্গে মেলে। শৈলীর সিদ্ধান্ত তবু M0-রই: flat ছায়া-পুতুল<br>
 এই পাতাটি <code>node tools/readme.mjs</code> থেকে জেনারেট হয়: টেবিল, ফ্রেম-ডেটা, ব্যাজের সংখ্যা — সব <code>content/</code>, <code>src/frames.ts</code> ও <code>docs/</code> থেকে তোলা। সম্পাদনা করতে চাইলে টুলটাই বদলান, তাহলে কিছু পুরোনো থাকবে না
 </sub></p>

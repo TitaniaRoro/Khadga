@@ -42,6 +42,8 @@ export class Fighter {
   vx = 0;
   vy = 0;
   hp = MAX_HP;
+  /** HP-র নিচের সীমা: দ্বন্দের বস এখানে আটকে যায় (মারা যায় না)। ০ মানে স্বাভাবিক। */
+  hpFloor = 0;
   guard = MAX_GUARD;
   meter = 0;
   phase: Phase = 'idle';
@@ -50,6 +52,12 @@ export class Fighter {
   stunLeft = 0;
   /** রোধ চালু ফ্রেম-গণনা — parry জানালা এখান থেকেই। */
   guardAge = 0;
+  /** শেষ ঢাল-ঘাতের পর কত ফ্রেম কেটেছে — ঢাল-পুনর্দখল এখান থেকেই বিলম্বিত হয়। */
+  chipAge = 999;
+  /** ঢাল না তুলেও ঘাত ঢাল-ক্ষমতা কতটা খায় (০ = শুধু ব্লক করলেই ঢাল কমে)। */
+  guardSoak = 0;
+  /** নিখুঁত রোধের-between- বিরতি (ফ্রেম): বারবার ঢাল তুলে অসীম parry পাওয়া যায় না। */
+  parryCooldown = 0;
   parried = 0;
   /** সংকল্প-আঘাতের তথ্য-লাইন; খেলোয়াড় পড়া কার্ড থেকে আসে। */
   private resolveBanner: string | null = null;
@@ -116,6 +124,8 @@ export class Fighter {
     if (this.phase === 'downed') return;
 
     const m = this.move;
+    this.chipAge += 1;
+    if (this.parryCooldown > 0) this.parryCooldown -= 1;
     if (m === null) { this.guardAge = 0; return; }
     this.frame += 1;
     if (this.phase === 'guard') {
@@ -145,8 +155,9 @@ export class Fighter {
     }
     if (this.guarding && this.move !== null) {
       // নিখুঁত রোধ: রোধ শুরুর PARRY_WINDOW ফ্রেমের ভেতর এলে প্রতিউত্তর-সুযোগ।
-      if (this.guardAge < PARRY_WINDOW) {
+      if (this.guardAge < PARRY_WINDOW && this.parryCooldown <= 0) {
         this.parried += 1;
+        this.parryCooldown = 36;   // ~০.৬ সেকেন্ড: parry-র পরপর জানালা ফের খোলে না
         attacker.stun(GUARD_BREAK_STUN - 12);
         this.guard = Math.min(MAX_GUARD, this.guard + 6);
         this.meter = Math.min(100, this.meter + 12);
@@ -162,9 +173,19 @@ export class Fighter {
         this.stunLeft = GUARD_BREAK_STUN;
         return { kind: 'guardbreak', by: attacker.name_bn, on: this.name_bn, dmg: 0 };
       }
+      this.chipAge = 0;   // চাপ চলতে থাকলে ঢাল ফেরে না — নাহলে ঢাল ভাঙা অসম্ভব
       return { kind: 'block', by: attacker.name_bn, on: this.name_bn, dmg: Math.round(raw * 0.12) };
     }
-    this.hp = Math.max(0, this.hp - Math.round(raw));
+    this.hp = Math.max(this.hpFloor, this.hp - Math.round(raw));
+    // ঢাল-শোষণ: 'ঢাল ভাঙো' যেন প্রতিপক্ষের এলোমেলো ব্লক-ভাগ্যের জালে না পড়ে।
+    // দ্বন্দ্বের বসে ০.৪৫ বসানো — তাই টানা চাপে ঢাল ভাঙে, ব্লক না করলেও।
+    if (this.guardSoak > 0 && this.guard > 0) {
+      this.guard = Math.max(0, this.guard - Math.round(MOVES[att.kind].guardDmg * this.guardSoak));
+      if (this.guard <= 0) {
+        this.phase = 'stunned'; this.stunLeft = GUARD_BREAK_STUN; this.move = null; this.frame = 0;
+        return { kind: 'guardbreak', by: attacker.name_bn, on: this.name_bn, dmg: 0 };
+      }
+    }
     this.phase = 'hitstun';
     this.stunLeft = MOVES[att.kind].hitstun;
     this.move = null; this.frame = 0; this.guardAge = 0;
