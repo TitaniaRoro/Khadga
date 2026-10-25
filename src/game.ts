@@ -79,6 +79,7 @@ export class Game {
         else if (a === 'back') this.buildSelect();
         else if (a === 'again') this.startChapter(this.ch!, 'wave');
         else if (a === 'next') this.advance();
+        else if (a === 'read' && this.ch) this.openChapter(this.ch.id, true);
         else if (a === 'pause') this.togglePause();
         else if (a === 'resume') this.togglePause();
         else if (a === 'copySave') void this.copySave(b);
@@ -123,15 +124,28 @@ export class Game {
     this.show('select');
   }
 
-  /** অধ্যায় খোলা: প্যানেল → কার্ড-পাঠ → ঢেউ → দ্বন্দ্ব। */
-  openChapter(id: number): void {
+  /**
+   * অধ্যায় খোলা = **এক লাইন ব্রিফ, তারপর খেলা**। আগে পুরো প্যানেল-সারি আর আটটা
+   * কার্ড লড়াইয়ের *আগে* দেখানো হতো — মানে খেলতে বসে প্রথমে বই পড়া। এখন ব্রিফ
+   * একটা লাইন, পড়াটা ভাঁজ করা (<details>), আর ইতিহাস লড়াইয়ের মাঝে-মাঝে নিজেই
+   * খুলে যায় (`dripCard`) — প্রতি ঢেউয়ে/ঢাল-ভাঙায় এক লাইন, সাথে কার্ডের লাভ।
+   */
+  openChapter(id: number, keepBoons = false): void {
     const ch = this.doc.chapters.find((c) => c.id === id);
     if (!ch) return;
     this.ch = ch;
-    this.boons = new Map();
+    if (!keepBoons) this.boons = new Map();
     const el = this.dom.read!;
+    const hook = (ch.panels_bn[0] ?? '').split('।')[0] ?? '';
+    const done = ch.cards.filter((c) => this.progress.read.includes(c.id)).length;
     el.innerHTML = `<h2><span class="num">${bn(ch.id)}</span> ${ch.title_bn} <small>${ch.years_bn}</small></h2>
+<p class="hook">${hook}${hook && !/[।.!?]$/.test(hook) ? '।' : ''}</p>
 <p class="bearer"><b>${ch.bearer_bn.name_bn}</b> — ${ch.bearer_bn.role_bn}</p>
+<div class="row">
+<button class="go ready" data-begin>${ch.fight_bn ? L.play : L.continue}</button>
+<span class="fineprint">${L.loreProgress}: <b>${bn(done)}/${bn(ch.cards.length)}</b> · ${L.drip} ${L.loreFold}</span>
+</div>
+<details class="lore"><summary>${L.loreFold}</summary>
 <ol class="panels">${ch.panels_bn.map((p) => `<li>${p}</li>`).join('')}</ol>
 <div class="cards">${ch.cards.map((c) => `
   <article class="card ${c.disputed ? 'disputed' : ''}" data-card="${c.id}">
@@ -143,7 +157,7 @@ export class Game {
     <button class="mini" data-read="${c.id}">${L.read}</button>
   </article>`).join('')}</div>
 <p class="hintline">${L.readCardFirst}</p>
-<button class="go" data-begin>${ch.fight_bn ? L.play : L.continue}</button>`;
+</details>`;
     el.querySelectorAll<HTMLButtonElement>('[data-read]').forEach((b) => {
       b.addEventListener('click', () => {
         const id2 = b.dataset.read!;
@@ -174,8 +188,24 @@ export class Game {
   private finishRead(el: HTMLElement, auto = false): void {
     const begin = el.querySelector<HTMLButtonElement>('[data-begin]');
     if (!begin) return;
-    begin.textContent = this.ch?.fight_bn ? (auto ? L.play : L.readAll + ' → ' + L.play) : L.continue;
+    // খেলা-বোতামের লেখা কখনও 'আগে পড়ো' হয় না — পড়াটা ঠিকানামতো বোনাস দেয়, টোল নয়।
+    begin.textContent = this.ch?.fight_bn ? L.play : L.continue;
     begin.classList.add('ready');
+    const fp = el.querySelector<HTMLElement>('.fineprint b');
+    if (fp && this.ch) fp.textContent = `${bn(this.ch.cards.filter((c) => this.progress.read.includes(c.id)).length)}/${bn(this.ch.cards.length)}`;
+    if (!auto && this.ch?.fight_bn) this.toastNow(L.readAll);
+  }
+
+  /** লড়াই চলতে-থাকা ইতিহাসের ফোঁটা: পরের-না-পড়া কার্ডের এক লাইন, সাথে তার লাভ। */
+  private dripCard(): void {
+    // সিম-এর অধ্যায়ই ধরা — `startChapter` সরাসারি ডাকলে (টেস্ট/রিস্টার্ট) this.ch খালি থাকে
+    const ch = this.sim?.ch ?? this.ch;
+    if (!ch || !ch.cards.length) return;
+    const next = ch.cards.find((c) => !this.progress.read.includes(c.id));
+    if (!next) return;
+    this.markRead(next.id);
+    const one = next.bn.split('।')[0]!.trim();
+    this.toastNow(`${L.drip} ${next.year === null ? L.prologue : bn(next.year)} · ${one.length > 104 ? one.slice(0, 104) + '…' : one}।`);
   }
 
   private markRead(id: string): void {
@@ -198,6 +228,7 @@ export class Game {
     this.view.setOpts(this.viewOpts);
     this.dom.qbar?.classList.add('hide');
     this.show(mode);
+    this.dripCard();   // লড়াই শুরুর মুহূর্তেই ইতিহাসের এক লাইন — পড়ার টোল নয়, অংশ
     this.dom.tbar!.innerHTML = mode === 'wave'
       ? `${L.wave} <b>${bn(sim.waveIndex + 1)}/${bn(sim.waves)}</b> · ${L.defense}: <b class="obj">${sim.objective?.name_bn ?? ''}</b>`
       : `${L.duelHint}`;
@@ -312,10 +343,11 @@ export class Game {
         if (e.kind !== 'whiff') this.view.burst(e.kind === 'block' || e.kind === 'parry' ? sim.player.x : sim.enemies.find((x) => x.name_bn === e.on)?.x ?? 400, 300, e.kind === 'resolve' ? 22 : 8);
         break;
       }
-      case 'wave': this.dom.tbar && (this.dom.tbar.innerHTML = `${L.wave} <b>${bn(e.index)}/${bn(e.of)}</b> · ${L.defense}: <b class="obj">${sim.objective?.name_bn ?? ''}</b>`); break;
+      case 'wave': this.dom.tbar && (this.dom.tbar.innerHTML = `${L.wave} <b>${bn(e.index)}/${bn(e.of)}</b> · ${L.defense}: <b class="obj">${sim.objective?.name_bn ?? ''}</b>`); this.dripCard(); break;
       case 'objective': if (sim.objective) { const r = sim.objective.hp / sim.objective.maxHp; this.dom.tbar?.classList.toggle('danger', r < 0.35); } break;
       case 'banner': this.banner = { text: e.text, life: 200 }; break;
       case 'boon': this.toastNow(`${L.tactic}: ${e.boon_bn}`); this.boons.set(e.card, boonOf(e.boon_bn)); break;
+      case 'break': this.dripCard(); break;
       case 'break': this.banner = { text: e.text, life: 320 }; break;
       case 'question': this.question = { ...e.q, lives: e.lives }; this.input.answerMode = true; this.paintQuestion(); break;
       case 'answered': {
@@ -355,6 +387,7 @@ export class Game {
 ${win && this.scene === 'duel' && sim.ch.boss ? `<p class="brk"><b>${L.bossBreak}:</b> ${sim.ch.boss.breakline_bn}</p>` : ''}
 <div class="row">
 <button data-act="again">${L.again}</button>
+<button class="mini" data-act="read">${L.readBrief} (${bn(sim.ch.cards.length)} ${L.loreProgress})</button>
 <button class="pri" data-act="${win ? 'next' : 'back'}">${win ? L.continue : L.back}</button>
 </div>`;
     this.bind();

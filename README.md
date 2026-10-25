@@ -14,7 +14,7 @@
   <a href="https://titaniaroro.github.io/Khadga/"><img src="https://img.shields.io/badge/play-live-b8860b?style=flat-square" alt="Play live"></a>
   <img src="https://img.shields.io/badge/UI-100%25_Bangla-c0392b?style=flat-square" alt="পুরো UI বাংলা">
   <img src="https://img.shields.io/badge/backend-none-12100e?style=flat-square" alt="কোনো ব্যাকএন্ড নেই">
-  <img src="https://img.shields.io/badge/site-0.32MB-2e7d32?style=flat-square" alt="সাইজ">
+  <img src="https://img.shields.io/badge/site-0.33MB-2e7d32?style=flat-square" alt="সাইজ">
   <img src="https://img.shields.io/badge/tests-31%20pass-1565c0?style=flat-square" alt="টেস্ট">
   <img src="https://img.shields.io/badge/code-GPL--3.0-6d4c41?style=flat-square" alt="কোড GPL-3.0">
   <img src="https://img.shields.io/badge/content-CC%20BY--SA%204.0-6d4c41?style=flat-square" alt="সামগ্রী CC BY-SA 4.0">
@@ -35,9 +35,9 @@
 | **আপনি কে** | কোনো সুলতান নন। একই অজ্ঞাত কারিগরের হাতে গড়া খড়্গের **ধারক-বংশ** — প্রতি অধ্যায়ে হাত বদলায়, তাই সাড়ে পাঁচশো বছর এক সুতোয় বাঁধা থাকে |
 | **ইঞ্জিন** | নিজে লেখা, ৬০Hz ফিক্সড-স্টেপ, কোনো ফ্রেমওয়ার্ক নয়। লড়াইয়ের পুরো নিয়ম `src/frames.ts`-এর এক-টেবিলে, আর ওই টেবিলই টেস্টে আটকানো |
 | **লড়াই** | ১৭টি ঢেউ (রক্ষা-মিশন) + ৮টি দ্বন্দ্ব (ঢাল-ভাঙা + প্রশ্ন)। জয়ের শর্ত সর্বদা *কিছু বাঁচানো*, কখনও *সব মারা* নয় |
-| **পড়াশোনা** | ৯০টি কার্ড লড়াইয়ের মাঝখানেই ওপেন হয়; ৩৭টি "বর" কার্ড-পড়া চালু করে; ৩৫টি প্রশ্ন ঢাল ভাঙলেই আসে |
+| **পড়াশোনা** | অধ্যায়ে ঢুকেই খেলা — ইতিহাস ভাঁজ করা <details>-এ, আর ৯০টি কার্ড লড়াইয়ের মাঝখানেই ওপেন হয়; ৩৭টি "বর" কার্ড-পড়া চালু করে; ৩৫টি প্রশ্ন ঢাল ভাঙলেই আসে |
 | **আর্ট** | চামড়ার ছায়া-পুতুলের সিলুয়েট — পটভূমির ওপর কালো ছাড়া কিছু নেই। রক্ত, খোঁচা-আঘাত, মৃতদেহ নেই |
-| **সাইজ** | খেলা ০.৩২MB (ফন্টসহ), নকশা-ব্রিফসহ সাইট ০.৩৮MB; ৬MB-তে ছাড়ালে **বিল্ড থামে** |
+| **সাইজ** | খেলা ০.৩৩MB (ফন্টসহ), নকশা-ব্রিফসহ সাইট ০.৩৮MB; ৬MB-তে ছাড়ালে **বিল্ড থামে** |
 | **নির্ভরতা** | প্রোডাকশনে দুটো ফন্টই — Hind Siliguri ১৪+১৪KB, Noto Sans Bengali ৪৪+৪৬KB (মোট ১১৮KB)। বাকি সব ভ্যানিলা টাইপস্ক্রিপ্ট + ক্যানভাস |
 | **অফলাইন** | Service Worker, কোনো CDN/অ্যানালিটিক্স/ট্র্যাকার নেই — একবার খুললে পরে ইন্টারনেট লাগে না |
 | **লাইসেন্স** | কোড GPL-3.0 · সামগ্রী CC BY-SA 4.0 · [CREDITS.md](CREDITS.md) |

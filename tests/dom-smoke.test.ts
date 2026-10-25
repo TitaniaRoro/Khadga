@@ -165,6 +165,9 @@ test('boot → title → অধ্যায় ১-এর ঢেউ: ৩০০ �
   const ch1 = (g!.doc.chapters as { id: number }[]).find((c) => c.id === 1)!;
   g!.startChapter(ch1 as never, 'wave');
   assert.ok(g!.sim, 'সিম তৈরি হয়নি');
+  // play-first যাচাই: ইতিহাস পর্দা-ভরাতে আটকায় না, লড়াইয়ের ভেতরেই আসে
+  assert.ok(g!.progress.read.length >= 1, 'লড়াই শুরুতেই একটি কার্ড খোলা উচিত (drip) — কোনোটাই খোলেনি');
+  assert.equal(dom.byId.get('toast')?.textContent?.includes('·'), true, 'টোস্টে কার্ডের লাইন দেখানো হয়নি');
   for (let f = 0; f < 300; f++) {
     g!.input.inject(f % 7 === 0 ? 'cut' : f % 23 === 0 ? 'guard' : null, f % 11 === 0 ? 1 : 0);
     for (const cb of dom.frameCbs.splice(0)) cb(f * 16.7);
