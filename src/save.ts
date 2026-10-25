@@ -26,6 +26,8 @@ export interface Prefs {
   reduceMotion: boolean;
   /** রঙ-অন্ধ-বান্ধব প্যালেট */
   colorblind: boolean;
+  /** আর্কেড-পিক্সেল মোড: অর্ধ-রেজ্যোলিউশন বাফার + CRT দানা (বন্ধ = মসৃণ ভেক্টর) */
+  pixel: boolean;
   /** টেক্সট আকার: ০ ছোট, ১ স্বাভাবিক, ২ বড়, ৩ সবচেয়ে বড় */
   fontScale: 0 | 1 | 2 | 3;
   /** যন্ত্রসংগীত চালু/বন্ধ (design §5: রক্তহীন + যন্ত্র-সংগীত টগল) */
@@ -39,6 +41,7 @@ export interface Prefs {
 
 export const defaultPrefs = (): Prefs => ({
   reduceMotion: false, colorblind: false, fontScale: 1, music: true, gentle: false, teacher: false, lang: 'bn',
+  pixel: true,
 });
 
 export const newProgress = (): Progress => ({ v: SAVE_VERSION, done: [], read: [], best: {}, prefs: defaultPrefs() });
@@ -76,7 +79,7 @@ export function encodeSave(p: Progress): string {
     d: p.done,
     r: p.read.map((id) => id.replace(/^c/, '')),
     b: p.best,
-    f: [p.prefs.fontScale, p.prefs.reduceMotion ? 1 : 0, p.prefs.colorblind ? 1 : 0, p.prefs.music ? 1 : 0, p.prefs.gentle ? 1 : 0, p.prefs.teacher ? 1 : 0].join(''),
+    f: [p.prefs.fontScale, p.prefs.reduceMotion ? 1 : 0, p.prefs.colorblind ? 1 : 0, p.prefs.music ? 1 : 0, p.prefs.gentle ? 1 : 0, p.prefs.teacher ? 1 : 0, p.prefs.pixel === false ? 0 : 1].join(''),
   };
   const b = new TextEncoder().encode(JSON.stringify(payload));
   let out = '';

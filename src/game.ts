@@ -45,6 +45,7 @@ export class Game {
     this.viewOpts = {
       reduceMotion: this.progress.prefs.reduceMotion,
       colorblind: this.progress.prefs.colorblind,
+      pixel: this.progress.prefs.pixel !== false,
       palette: PALETTES[0]!,
     };
     this.view = new Renderer(canvas, this.viewOpts);
@@ -89,6 +90,7 @@ export class Game {
         else if (a === 'teacher') this.flip('teacher', b);
         else if (a === 'reduce') this.flip('reduceMotion', b);
         else if (a === 'cb') this.flip('colorblind', b);
+        else if (a === 'pixel') this.flip('pixel', b);
         else if (a === 'fontUp') this.font(1);
         else if (a === 'fontDown') this.font(-1);
       });
@@ -229,6 +231,7 @@ export class Game {
     this.dom.qbar?.classList.add('hide');
     this.show(mode);
     this.dripCard();   // লড়াই শুরুর মুহূর্তেই ইতিহাসের এক লাইন — পড়ার টোল নয়, অংশ
+    this.view.announce(mode === 'duel' ? L.duelNow : `${L.fightNow}`, `${ch.title_bn} · ${ch.years_bn}`, 108);
     this.dom.tbar!.innerHTML = mode === 'wave'
       ? `${L.wave} <b>${bn(sim.waveIndex + 1)}/${bn(sim.waves)}</b> · ${L.defense}: <b class="obj">${sim.objective?.name_bn ?? ''}</b>`
       : `${L.duelHint}`;
@@ -256,13 +259,16 @@ export class Game {
     this.dom.pause?.classList.toggle('hide', !this.paused);
   }
 
-  private flip(key: 'music' | 'gentle' | 'teacher' | 'reduceMotion' | 'colorblind', b: HTMLElement): void {
+  private flip(key: 'music' | 'gentle' | 'teacher' | 'reduceMotion' | 'colorblind' | 'pixel', b: HTMLElement): void {
     const p = this.progress.prefs;
     if (key === 'music') p.music = !p.music;
     if (key === 'gentle') p.gentle = !p.gentle;
     if (key === 'teacher') p.teacher = !p.teacher;
     if (key === 'reduceMotion') p.reduceMotion = !p.reduceMotion;
     if (key === 'colorblind') p.colorblind = !p.colorblind;
+    if (key === 'pixel') p.pixel = p.pixel === false;
+    this.viewOpts.pixel = p.pixel !== false;
+    this.view.resize();   // পিক্সেল-মোড পাল্টালে ব্যাকিং-স্টোর-মাপ বদলায়
     this.viewOpts.reduceMotion = p.reduceMotion;
     this.viewOpts.colorblind = p.colorblind;
     this.view.setOpts(this.viewOpts);
@@ -339,6 +345,14 @@ export class Game {
       case 'hit': {
         if (e.kind === 'resolve') { this.view.kick(sim.player.name_bn === e.by ? 12 : 6); this.banner = { text: `${L.banner}: ${e.banner ?? ''}`, life: 190 }; }
         if (e.kind === 'guardbreak') { this.toastNow(L.guardBreak); this.view.kick(9); }
+        {
+          const tgt = e.on === sim.player.name_bn ? sim.player : sim.enemies.find((f) => f.name_bn === e.on);
+          if (tgt) {
+            if (e.kind === 'hit' || e.kind === 'resolve') this.view.pop(tgt.x, 268 + tgt.y, bn(e.dmg), e.by === sim.player.name_bn ? '#ffe9a8' : '#ffb4a2');
+            else if (e.kind === 'guardbreak') this.view.pop(tgt.x, 268 + tgt.y, L.guardBroken, '#ffd98a');
+            else if (e.kind === 'parry') this.view.pop(tgt.x, 268 + tgt.y, L.parried, '#bfe8ff');
+          }
+        }
         if (e.kind === 'parry') { this.toastNow(L.correct + ' — ' + L.meterUp); this.view.kick(5); }
         if (e.kind !== 'whiff') this.view.burst(e.kind === 'block' || e.kind === 'parry' ? sim.player.x : sim.enemies.find((x) => x.name_bn === e.on)?.x ?? 400, 300, e.kind === 'resolve' ? 22 : 8);
         break;
@@ -347,8 +361,7 @@ export class Game {
       case 'objective': if (sim.objective) { const r = sim.objective.hp / sim.objective.maxHp; this.dom.tbar?.classList.toggle('danger', r < 0.35); } break;
       case 'banner': this.banner = { text: e.text, life: 200 }; break;
       case 'boon': this.toastNow(`${L.tactic}: ${e.boon_bn}`); this.boons.set(e.card, boonOf(e.boon_bn)); break;
-      case 'break': this.dripCard(); break;
-      case 'break': this.banner = { text: e.text, life: 320 }; break;
+      case 'break': this.banner = { text: e.text, life: 320 }; this.dripCard(); this.view.announce(L.guardBroken, e.text, 150); break;
       case 'question': this.question = { ...e.q, lives: e.lives }; this.input.answerMode = true; this.paintQuestion(); break;
       case 'answered': {
         this.question = null; this.input.answerMode = false;
@@ -357,7 +370,7 @@ export class Game {
         if (!e.correct) this.toast = { text: L.meterDown, life: 130 };
         break;
       }
-      case 'win': this.view.kick(10); break;
+      case 'win': this.view.kick(10); this.view.announce(L.ko, '', 120); break;
       default: break;
     }
   }

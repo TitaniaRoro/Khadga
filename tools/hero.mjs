@@ -36,9 +36,10 @@ const bn = (s) => String(s).replace(/[0-9]/g, (d) => BN[Number(d)] ?? d);
 /** @napi-rs/canvas-কে ব্রাউজার-ভাস-এর মতো সাজানো (Renderer এগুলোই ছুঁয়)। */
 globalThis.window = { devicePixelRatio: 2 };
 function gameCanvas(sim, chapterId, ticks, policy) {
-  const cv = createCanvas(760, 360);
+  const cv = createCanvas(380, 180);   // পিক্সেল মোড: ব্যাকিং-স্টোর অর্ধেক, তাই এখানেও ৩৮০×১৮
   cv.getBoundingClientRect = () => ({ width: 760, height: 360, top: 0, left: 0 });
-  const r = new Renderer(cv, { reduceMotion: false, colorblind: false, palette: PALETTES[chapterId] });
+  cv.imageSmoothingEnabled = false;
+  const r = new Renderer(cv, { reduceMotion: false, colorblind: false, palette: PALETTES[chapterId], pixel: true });
   let best = null, bestScore = -1;
   for (let t = 0; t < ticks; t++) {
     policy(sim, t);
@@ -107,6 +108,7 @@ async function compose(W, H, file, label) {
     x.fillStyle = 'rgba(240,230,207,.55)'; x.font = `400 ${Math.round(H * 0.028)}px NotoBn400`;
     x.textAlign = 'right'; x.fillText(cap, ox + cellW - 2, capBase); x.textAlign = 'left';  // fillText-এর ৩য় আর্গুমেন্ট maxWidth, options নয়
     x.save(); x.beginPath(); x.rect(ox, fy, cellW, cellH); x.clip();
+    x.imageSmoothingEnabled = false;   // পিক্সেল-আর্কেড: বড় করা nearest, রেশমি নয়
     x.drawImage(imgs[i], ox - (dw - cellW) / 2, fy + dy, dw, dh);
     x.restore();
     x.strokeStyle = 'rgba(240,230,207,.18)'; x.lineWidth = 1;

@@ -20,7 +20,26 @@ export interface ViewOpts {
   colorblind: boolean;
   /** অধ্যায়-ভিত্তিক রঙ (মাটি/নদী/ইট/সোনালি) — স্থাপত্য-অনুপ্রেরণা, ছবি নয়। */
   palette: Palette;
+  /** আর্কেড-পিক্সেল মোড (ডিফল্ট চালু): ব্যাকিং-স্টোর অর্ধেক রেজ্যোলিউশন,
+   *  ব্রাউজার nearest-neighbour-এ বড় করে → দানা-দানা পিক্সেল + CRT ছায়া। */
+  pixel?: boolean;
 }
+
+const hex = (c: string): [number, number, number] => {
+  const n = parseInt(c.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+};
+const mix = (a: string, b: string, t: number): string => {
+  const x = hex(a), y = hex(b);
+  const r = Math.round(x[0] + (y[0] - x[0]) * t), g = Math.round(x[1] + (y[1] - x[1]) * t), bl = Math.round(x[2] + (y[2] - x[2]) * t);
+  return `rgb(${r},${g},${bl})`;
+};
+/** বায়ার ৪×৪ থ্রেশহোল্ড — দুই টোনের মাঝের জায়গা দানা-মিশিয়ে ফাঁক করা হয়,
+ *  তাই গ্রেডিয়েন্ট সমতল লাগে না আর প্যালেট সীমিত-মনে পড়ে (আর্কেডের ভাব)। */
+const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
+const bayer = (x: number, y: number, n: number): number => (BAYER[((y & 3) << 2) | (x & 3)]! + 0.5) / 16 * n;
+const BN_DIGIT = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
+const bnNum = (n: number): string => String(n).replace(/\d/g, (d) => BN_DIGIT[Number(d)] ?? d);
 
 export interface Palette {
   ground: string; sky: string; ink: string; accent: string; hero: string; enemy: string; ally: string;
@@ -94,6 +113,11 @@ export class Renderer {
   private shake = 0;
   private dust: { x: number; y: number; vx: number; vy: number; life: number; r: number }[] = [];
   private flash: { x: number; y: number; life: number }[] = [];
+  /** ভাসমান ক্ষতি-সংখ্যা আর আর্কেড-ঘোষণা ('লড়াই!', 'কো!')। */
+  private pops: { x: number; y: number; vy: number; life: number; txt: string; col: string }[] = [];
+  private say: { text: string; life: number; sub: string } | null = null;
+  private white = 0;
+  private tex: { key: string; img: ImageData } | null = null;
   readonly canvas: HTMLCanvasElement;
   private opts: ViewOpts;
 
@@ -108,19 +132,38 @@ export class Renderer {
 
   setOpts(o: ViewOpts): void { this.opts = o; }
 
+  private get pixel(): boolean { return this.opts.pixel !== false; }
+
   resize(): void {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const box = this.canvas.getBoundingClientRect();
     const cssW = box.width || W;
     const scale = cssW / W;
-    this.canvas.width = Math.round(cssW * dpr);
-    this.canvas.height = Math.round(H * scale * dpr);
+    // পিক্সেল মোড: ব্যাকিং-স্টোর ১/২ (৩৮০×১৮০), CSS-এ nearest-neighbour-এ প্রসারিত।
+    const q = this.pixel ? 0.5 : 1;
+    this.canvas.width = Math.max(2, Math.round(cssW * dpr * q));
+    this.canvas.height = Math.max(2, Math.round(H * scale * dpr * q));
     this.ctx.setTransform(this.canvas.width / W, 0, 0, this.canvas.width / W, 0, 0);
-    this.scale = scale * dpr;
+    this.ctx.imageSmoothingEnabled = false;
+    this.scale = scale * dpr * q;
+    this.tex = null;   // রেজ্যোলিউশন বদলালে টেক্সচার আবার বানাতে হবে
   }
   private scale = 1;
 
-  kick(power: number): void { if (!this.opts.reduceMotion) this.shake = Math.max(this.shake, power); }
+  /** আঘাতের সংখ্যা/শব্দ-বাঁধন: ক্ষতি-পপ, বড় হলে পর্দা-ঝলক। */
+  pop(x: number, y: number, txt: string, col = '#f7f0dc'): void {
+    this.pops.push({ x, y: y - 44, vy: -1.15, life: 40, txt, col });
+  }
+  announce(text: string, sub = '', frames = 96): void { this.say = { text, sub, life: frames }; }
+
+  /** পিক্সেল-গ্রিডে থিতু করা: ০.৫-স্কেলে আধা-পিক্সেল রেখা ঝাপসা হতো। */
+  private sn(v: number): number { return this.pixel ? Math.round(v * 2) / 2 : Math.round(v); }
+
+  kick(power: number): void {
+    if (this.opts.reduceMotion) return;
+    this.shake = Math.max(this.shake, power);
+    if (power >= 7) this.white = Math.max(this.white, 3);   // ভারী ঘায়ে সাদা ঝলক
+  }
 
   burst(x: number, y: number, n = 10, col = '#e9dfc8'): void {
     for (let i = 0; i < n; i++) {
@@ -139,11 +182,17 @@ export class Renderer {
       ctx.translate((Math.random() - 0.5) * this.shake, (Math.random() - 0.5) * this.shake * 0.6);
       this.shake *= 0.82;
     }
-    // আকাশ + মাটি
-    const g = ctx.createLinearGradient(0, 0, 0, H);
-    g.addColorStop(0, P.sky); g.addColorStop(0.62, P.sky); g.addColorStop(0.63, P.ground); g.addColorStop(1, P.ink);
-    ctx.fillStyle = g; ctx.fillRect(-20, -20, W + 40, H + 40);
-    this.backdrop(sim, P, tick);
+    // আকাশ + মাটি: দিদার-করা টেক্সচার (একবার বানিয়ে প্রতি ফ্রেমে বসানো হয়)
+    if (!this.paintGround(P)) {
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, P.sky); g.addColorStop(0.62, P.sky); g.addColorStop(0.63, P.ground); g.addColorStop(1, P.ink);
+      ctx.fillStyle = g; ctx.fillRect(-20, -20, W + 40, H + 40);
+    }
+    // দুই তলার প্যারালাক্স: দূরের সারি ধীরে-ছোট, কাছের সারি দ্রুত-বড় → সমতল ভাব কাটে
+    ctx.save(); ctx.globalAlpha = 0.42;
+    this.backdrop(sim, P, tick, 0.45, 0.72);
+    ctx.restore();
+    this.backdrop(sim, P, tick, 1, 1);
 
     if (sim.objective) this.boat(ctx, sim.objective.x, GROUND + sim.objective.y * 0.5, sim.objective, P);
 
@@ -162,6 +211,47 @@ export class Renderer {
     }
     ctx.globalAlpha = 1;
     this.dust = this.dust.filter((d) => d.life > 0);
+    // ক্ষতি-পপ (আর্কেডের সংখ্যা-উড়ে-থাকা)
+    for (const q of this.pops) {
+      q.y += q.vy; q.vy += 0.045; q.life -= 1;
+      ctx.globalAlpha = Math.min(1, q.life / 16);
+      ctx.font = '700 19px "Noto Sans Bengali", "Hind Siliguri", system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(8,7,6,.85)'; ctx.fillText(q.txt, this.sn(q.x) + 2, this.sn(q.y) + 2);
+      ctx.fillStyle = q.col; ctx.fillText(q.txt, this.sn(q.x), this.sn(q.y));
+    }
+    ctx.textAlign = 'left'; ctx.globalAlpha = 1;
+    this.pops = this.pops.filter((q) => q.life > 0);
+    // একসাথে কটি প্রতিপক্ষ ধরা-পড়ে → কম্বো-গণনা (সিম-এ নতুন ফিল্ড লাগেনি)
+    const cn = sim.enemies.filter((e) => e.phase === 'hitstun' || e.phase === 'blockstun').length;
+    if (cn > 1) {
+      ctx.font = '700 22px "Noto Sans Bengali", "Hind Siliguri", system-ui, sans-serif'; ctx.textAlign = 'right';
+      ctx.fillStyle = 'rgba(8,7,6,.8)'; ctx.fillText(`×${bnNum(cn)}`, W - 26, 60);
+      ctx.fillStyle = P.accent === '#2c6f6a' ? '#ffe9a8' : '#fff2cf'; ctx.fillText(`×${bnNum(cn)}`, W - 28, 58);
+      ctx.textAlign = 'left';
+    }
+    // আর্কেড ঘোষণা: 'লড়াই!' / 'কো!'
+    if (this.say) {
+      this.say.life -= 1;
+      const k = Math.min(1, (96 - this.say.life) / 8), fade = Math.min(1, this.say.life / 18);
+      ctx.save();
+      ctx.globalAlpha = fade; ctx.textAlign = 'center';
+      const sc = 0.9 + k * 0.1, cy = 128;
+      ctx.translate(W / 2, cy); ctx.scale(sc, sc);
+      ctx.font = '700 62px "Noto Sans Bengali", "Hind Siliguri", system-ui, sans-serif';
+      ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(10,8,6,.9)'; ctx.strokeText(this.say.text, 0, 0);
+      ctx.fillStyle = '#fdf3d8'; ctx.fillText(this.say.text, 0, 0);
+      if (this.say.sub) {
+        ctx.font = '400 21px "Noto Sans Bengali", "Hind Siliguri", system-ui, sans-serif';
+        ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(10,8,6,.9)'; ctx.strokeText(this.say.sub, 0, 32);
+        ctx.fillStyle = '#f0e6cf'; ctx.fillText(this.say.sub, 0, 32);
+      }
+      ctx.restore(); ctx.textAlign = 'left';
+      if (this.say.life <= 0) this.say = null;
+    }
+    this.foreground(sim, P, tick);
+    if (this.white > 0) { ctx.fillStyle = `rgba(255,250,235,${0.09 * this.white})`; ctx.fillRect(0, 0, W, H); this.white -= 1; }
+    if (this.pixel) this.scanlines();
     for (const fl of this.flash) {
       fl.life -= 1;
       const k = Math.max(0, fl.life / 9);
@@ -183,10 +273,118 @@ export class Renderer {
    * যা বারবার দেখা যায়, সেটাই রেকর্ড-অনুগত রূপ; ভেতরের কারুকার্য (টেরাকোটা প্যানেল)
    * রেখার পুরুত্বের তারতম্য দিয়েই বোঝানো, ছবি আঁকা নয়।
    */
-  private backdrop(sim: Sim, P: Palette, tick: number): void {
+  /**
+   * আকাশ+মাটি একবারই পিক্সেল-ধরে ধরে বানানো হয় (ImageData), তারপর প্রতি ফ্রেমে
+   * putImageData। ফল: স্তর-বাঁধা (quantized) আকাশ, বায়ার দিদার, পোড়া-রোদের দাগ,
+   * গায়ে-পোড়া মাটির দানা — মানে 'সব সমতল' অভিযোগের সরাসরি জবাব, আর খরচ এক কল।
+   * ব্রাউজার/স্টাব DOM-এ createImageData না চললে ফিরে যায় গ্রেডিয়েন্টে (ক্র্যাশ নয়)।
+   */
+  private paintGround(P: Palette): boolean {
+    const { ctx } = this;
+    const bw = this.canvas.width, bh = this.canvas.height;
+    if (!this.pixel || bw < 8 || bh < 8) return false;
+    const key = `${P.sky}${P.ground}${P.ink}${P.accent}${bw}x${bh}${this.opts.colorblind}`;
+    if (!this.tex || this.tex.key !== key) {
+      let img: ImageData | undefined;
+      try { img = ctx.createImageData(bw, bh); } catch { img = undefined; }
+      if (!img || !(img.data instanceof Uint8ClampedArray)) return false;
+      const d = img.data;
+      const sky = hex(P.sky), gnd = hex(P.ground), ink = hex(P.ink), acc = hex(P.accent);
+      const horizon = Math.round((GROUND / H) * bh);
+      const STEPS = 7;
+      for (let y = 0; y < bh; y++) {
+        const t = y / bh;
+        for (let x = 0; x < bw; x++) {
+          let c: [number, number, number];
+          if (y < horizon) {
+            // আকাশ: উপরে গাঢ়, ক্ষিতিজে ফ্যাকাসে — ধাপে ধাপে, দিদারে গাথা
+            const up = 1 - y / Math.max(1, horizon);
+            const lvl = Math.min(STEPS - 1, Math.floor(up * STEPS));
+            const f = up * STEPS - lvl;
+            const pick = f > bayer(x, y, 1) ? Math.min(STEPS - 1, lvl + 1) : lvl;
+            const k = pick / (STEPS - 1);
+            c = [
+              sky[0] + (ink[0] - sky[0]) * (1 - k) * 0.55,
+              sky[1] + (ink[1] - sky[1]) * (1 - k) * 0.55,
+              sky[2] + (ink[2] - sky[2]) * (1 - k) * 0.55,
+            ];
+            // ক্ষিতিজের কাছে রোদের উজ্জ্বল পটি
+            if (y > horizon - 9) {
+              const w = (y - (horizon - 9)) / 9;
+              c = [c[0] + acc[0] * 0.16 * w, c[1] + acc[1] * 0.16 * w, c[2] + acc[2] * 0.12 * w];
+            }
+            // রোদের থালা (উঁচু-ডানে) + আলোর দানা
+            const dx = x - bw * 0.78, dy = y - bh * 0.16;
+            const rr = dx * dx + dy * dy * 1.5;
+            if (rr < 150) c = [Math.min(255, c[0] + 74), Math.min(255, c[1] + 66), Math.min(255, c[2] + 40)];
+            else if (rr < 380 && bayer(x, y, 1) > 0.5) c = [c[0] + 26, c[1] + 24, c[2] + 14];
+          } else {
+            // মাটি: উপরে উজ্জ্বল, নিচে কালো — দানা-দিদার আর চাকা-রেখা
+            const k = Math.min(1, (y - horizon) / Math.max(1, bh - horizon));
+            const base: [number, number, number] = [
+              gnd[0] + (ink[0] - gnd[0]) * k,
+              gnd[1] + (ink[1] - gnd[1]) * k,
+              gnd[2] + (ink[2] - gnd[2]) * k,
+            ];
+            const n = bayer(x, y, 1);
+            const speck = ((x * 7 + y * 13) % 29) < 3 ? 16 : 0;
+            c = [base[0] + (n > 0.72 ? 12 : n < 0.2 ? -14 : 0) + speck,
+                 base[1] + (n > 0.72 ? 11 : n < 0.2 ? -15 : 0) + speck * 0.8,
+                 base[2] + (n > 0.72 ? 9 : n < 0.2 ? -13 : 0) + speck * 0.6];
+            if (y === horizon) { c = [sky[0] * 0.72 + acc[0] * 0.1, sky[1] * 0.72 + acc[1] * 0.1, sky[2] * 0.7]; }
+          }
+          const i = (y * bw + x) << 2;
+          d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255;
+        }
+      }
+      this.tex = { key, img };
+    }
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.putImageData(this.tex.img, 0, 0);
+    ctx.restore();
+    return true;
+  }
+
+  /** সামনের তলা: নদীপাড়ের ঘাস/বাশের ডগা — খেলোয়ারটা মাঝের তলায় বসে, এই এক লাইনে
+   *  পর্দায় গভীরতা দেখায় (আগে সব কিছু একই তলায়, সমতল লাগত)। */
+  private foreground(sim: Sim, P: Palette, tick: number): void {
+    const { ctx } = this;
+    const drift = (sim.player.x * 0.16 + tick * 0.02) % 96;
+    ctx.save();
+    ctx.fillStyle = mix(P.ink, '#000000', 0.45);
+    ctx.beginPath(); ctx.rect(0, GROUND + 34, W, H); ctx.clip();
+    for (let i = -1; i < 9; i++) {
+      const x = i * 96 - drift;
+      for (let k = 0; k < 3; k++) {
+        const bx = x + k * 13, hh = 16 + ((i * 7 + k * 5) % 4) * 7;
+        ctx.beginPath(); ctx.moveTo(bx, H);
+        ctx.quadraticCurveTo(bx + 3, H - hh * 0.6, bx + 8 + k, H - hh);
+        ctx.lineTo(bx + 5, H); ctx.closePath(); ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  /** CRT-ছায়া: পিক্সেল-লাইনের ফাঁকে কালো পটি — আর্কেড ক্যাবিনেটের ভাব। */
+  private scanlines(): void {
+    const { ctx } = this;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = 'rgba(6,5,4,.19)';
+    for (let y = 1; y < this.canvas.height; y += 2) ctx.fillRect(0, y, this.canvas.width, 1);
+    ctx.fillStyle = 'rgba(6,5,4,.22)';
+    ctx.fillRect(0, 0, this.canvas.width, 2); ctx.fillRect(0, this.canvas.height - 2, this.canvas.width, 2);
+    ctx.restore();
+  }
+
+  private backdrop(sim: Sim, P: Palette, tick: number, depth = 1, alpha = 1): void {
     const { ctx } = this;
     const id = sim.ch.id;
-    const drift = (tick * 0.06 + sim.player.x * 0.05) % 108;
+    // প্যারালাক্স: দূরের সারি খেলোয়াড়ের চলার সঙ্গে ধীরে সরে, কাছে-েরটা বেশি
+    const drift = (tick * 0.06 * depth + sim.player.x * 0.05 * depth) % 108;
+    if (alpha !== 1) ctx.globalAlpha = alpha;
+    if (depth < 1) { ctx.translate(0, 18 * (1 - depth)); ctx.scale(1, 0.86); }
     ctx.fillStyle = 'rgba(0,0,0,.16)';
     for (let i = 0; i < 7; i++) {
       const x = 40 + i * 108 - drift;
@@ -341,6 +539,11 @@ export class Renderer {
     };
     ctx.lineWidth = 5; ctx.strokeStyle = rim; bodyPath(); ctx.stroke();
     ctx.fillStyle = ink; bodyPath(); ctx.fill();
+    // পিঠে-ওপরের আলো: একটি উজ্জ্বল রেখা + বুকে ছায়া-ঢাল — নিকষি কালোটা জমে ওঠে
+    ctx.strokeStyle = mix(ink, rim, 0.6); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(p.lean * 6 - 6, chestY - 2); ctx.lineTo(p.lean * 6 + 6, chestY - 2); ctx.stroke();
+    ctx.fillStyle = mix(ink, '#000000', 0.55);
+    ctx.beginPath(); ctx.moveTo(p.lean * 6 + 3, chestY); ctx.lineTo(9, hipY - 2); ctx.lineTo(10, hipY + 9); ctx.lineTo(2, hipY + 9); ctx.closePath(); ctx.fill();
     ctx.lineWidth = 16; ctx.strokeStyle = rim;
     ctx.beginPath(); ctx.moveTo(0, hipY); ctx.lineTo(p.lean * 6, chestY); ctx.stroke();
     ctx.lineWidth = 13; ctx.strokeStyle = ink;

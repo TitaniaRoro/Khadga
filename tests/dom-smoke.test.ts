@@ -178,6 +178,10 @@ test('boot → title → অধ্যায় ১-এর ঢেউ: ৩০০ �
   assert.ok(clock && /[:০-৯]/.test(clock.textContent), 'HUD-ঘড়ি লেখেনি');
   const tbar = dom.byId.get('tbar');
   assert.ok(tbar && tbar.innerHTML.includes('ঢেউ'), 'ঢেউ-ফলক ভরাট হয়নি');
+  // পিক্সেল-আর্কেড: আঁকা হয় অর্ধ-রেজ্যোলিউশনে (৩৮×১৮০), বড় হয় CSS-এ
+  const stage = dom.byId.get('stage')!;
+  assert.equal(stage.width, 380, 'পিক্সেল মোডে ক্যানভাসের ব্যাকিং-স্টোর ৩৮×১৮০ হওয়ার কথা');
+  assert.equal(stage.height, 180);
 });
 
 test('কোনো id দ্বন্দ্ব নেই: index.html-এর id-গুলো অদ্বিতীয়', { ...PRE }, () => {
@@ -204,4 +208,13 @@ test('UI-তে English শব্দ নেই — দেখা-লেখা শ
   const words = (visible.match(/[A-Za-z]{3,}/g) ?? []).filter((w) => !['ADWQ', 'J', 'K', 'L'].includes(w));
   const allowed = new Set(['Shift', 'Space']); // কীবোর্ড-কী-এর নাম — পদার্থেই ল্যাটিন
   assert.deepEqual(words.filter((w) => !allowed.has(w)), [], `লেখা-মাঝে English: ${words.join(', ')}`);
+});
+
+test('আর্কেড-রূপ: পিক্সেল-প্রসারণ, CRT-টগল, সমতল-ভাঙা HUD', { ...PRE }, () => {
+  const css = readFileSync(new URL('../docs/styles.css', import.meta.url), 'utf8');
+  assert.match(css, /#stage\s*\{[^}]*image-rendering:\s*pixelated/, 'ক্যানভাস nearest-neighbour-এ বড় হওয়া দরকার (নইলে পিক্সেল মোড ঝাপসা)');
+  assert.match(css, /border-radius:\s*0/, 'আর্কেড-ফ্রেম: নরম গোল কোণ বাদ');
+  assert.match(css, /#app::after[\s\S]*radial-gradient/, 'ভিনিয়েট (গভীরতার জন্য)');
+  const html = readFileSync(HTML, 'utf8');
+  assert.match(html, /data-act="pixel"/, 'পিক্সেল মোড বন্ধ-চালুর টগল না থাকলে শৈলী চাপিয়ে দেওয়া হয়');
 });
