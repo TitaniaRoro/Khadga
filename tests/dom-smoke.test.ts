@@ -185,7 +185,10 @@ test('কোনো id দ্বন্দ্ব নেই: index.html-এর id-�
 
 test('HTML-এ বাইরে-ডাকা কিছু নেই (সার্ভারলেস + অফলাইন শর্ত)', { ...PRE }, () => {
   const html = readFileSync(HTML, 'utf8');
-  assert.equal(/https?:\/\/(?!localhost)/.test(html), false, 'index.html-য়ে external URL আছে');
+  // আসল নিয়মটা 'বাইরের কিছুর ওপর নির্ভরতা নেই' — সেটা src/href-এ ধরা উচিত,
+  // <meta content="">-এ নয়। og:url/og:image ক্রলারের জন্য লেখা অ্যাবসলিউট ঠিকানা;
+  // ব্রাউজার সেটা লোড করে না, তাই offline-চলার নিশা ভাঙে না।
+  assert.equal(/(?:src|href)\s*=\s*["']https?:\/\//.test(html), false, 'index.html-এ src/href external URL আছে (CDN-নির্ভরতা)');
   const css = readFileSync(new URL('../docs/fonts.css', import.meta.url), 'utf8');
   assert.equal(/https?:\/\//.test(css), false, 'fonts.css-য়ে CDN আছে');
 });

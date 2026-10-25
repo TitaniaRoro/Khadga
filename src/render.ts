@@ -83,6 +83,11 @@ function limb(ctx: CanvasRenderingContext2D, x: number, y: number, ang: number, 
   ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ex, ey); ctx.stroke();
   return [ex, ey];
 }
+/** ছায়ার দেহ + কিনারা-আলো: দুই পাস, তাই পুতুলটা পর্দা থেকে আলাদা দেখায়। */
+function limb2(ctx: CanvasRenderingContext2D, x: number, y: number, ang: number, len: number, thick: number, ink: string, rim: string): [number, number] {
+  limb(ctx, x, y, ang, len, thick + 3, rim);
+  return limb(ctx, x, y, ang, len, thick, ink);
+}
 
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
@@ -142,10 +147,11 @@ export class Renderer {
 
     if (sim.objective) this.boat(ctx, sim.objective.x, GROUND + sim.objective.y * 0.5, sim.objective, P);
 
-    const list = [...sim.enemies, ...(sim.ally ? [sim.ally] : []), sim.player]
-      .filter((f) => f.phase !== 'downed' || f.alive || true)
-      .sort((a, b) => a.y - b.y);
-    for (const f of list) this.puppet(ctx, f, tick, P);
+    const list = [...sim.enemies.map((f) => [f, 'foe'] as const),
+      ...(sim.ally ? [[sim.ally, 'ally'] as const] : []),
+      [sim.player, 'hero'] as const]
+      .sort((a, b) => a[0].y - b[0].y);
+    for (const [f, role] of list) this.puppet(ctx, f, tick, P, role);
 
     // ধুলো
     for (const d of this.dust) {
@@ -167,33 +173,111 @@ export class Renderer {
     ctx.restore();
   }
 
-  /** স্থাপত্য-অনুপ্রেরণার পট: নদী/মসজিদ-মেহরাব/দুর্গ-দেওয়াল — রূপরেখা, ছবি নয়। */
+  /**
+   * অধ্যায়ভিত্তিক আকাশরেখা — স্থাপত্যের *রূপ*, কোনো তারিখ-দাবি নয়।
+   *
+   * বাংলার দুটো নিজস্ব রেখা এখানেই বসানো: (ক) ঠাং/ছাউনির ছাদ থেকে নামা **বক্র
+   * কর্নিশ** (দো-ছলা), যা সুলতানি ইটের মসজিদেও ঢুকে গেছে — তাই এখানে গোল ছাদ নয়,
+   * বাঁকানো ছাদ; (খ) **কীলকমে** (নোকচওয়ালা মেहरাব-খিলান), দেশি ইটের দেয়ালের ছন্দ।
+   * ঢাল-ছাদ/কীলকমে/ছোট-গম্বুজের সারি — পান্ডুয়া-গৌড়-সোনারগাঁও-বাগেরহাটের ছায়ায়
+   * যা বারবার দেখা যায়, সেটাই রেকর্ড-অনুগত রূপ; ভেতরের কারুকার্য (টেরাকোটা প্যানেল)
+   * রেখার পুরুত্বের তারতম্য দিয়েই বোঝানো, ছবি আঁকা নয়।
+   */
   private backdrop(sim: Sim, P: Palette, tick: number): void {
     const { ctx } = this;
     const id = sim.ch.id;
+    const drift = (tick * 0.06 + sim.player.x * 0.05) % 108;
     ctx.fillStyle = 'rgba(0,0,0,.16)';
     for (let i = 0; i < 7; i++) {
-      const x = 40 + i * 108 - ((tick * 0.06 + sim.player.x * 0.05) % 108);
-      if (id <= 1) { ctx.fillRect(x, 150, 30, 90); }
-      else if (id <= 4) { this.arch(ctx, x + 20, 240, 54, 96); }
-      else if (id <= 6) { this.dome(ctx, x + 30, 214, 40); }
-      else { this.dome(ctx, x + 26, 210, 34); ctx.fillRect(x - 4, 196, 8, 44); }
+      const x = 40 + i * 108 - drift;
+      switch (true) {
+        case id === 0: this.chala(ctx, x, 240, 74, 44); break;                 // বন্দর-পল্লী: ছাউনির ছায়া
+        case id <= 2: this.arch(ctx, x + 12, 240, 50, 92); this.bar(ctx, x, 236, 78, 6); break;  // পুরনো দেওয়াল + কীলকমে
+        case id === 3: this.domeRow(ctx, x, 214, 3, 20, 62); break;             // সোনারগাঁও: ছোট-গম্বুজের সারি
+        case id === 4: this.domeRow(ctx, x - 6, 206, 5, 15, 92); this.bands(ctx, x - 6, 250, 92, 3); break; // পান্ডুয়া-গৌড়: ইট ও ঢাল-কর্নিশ
+        case id === 5: this.battlement(ctx, x, 196, 86, 46); this.arch(ctx, x + 20, 242, 40, 46); break;     // দুর্গ-প্রান্তর
+        case id === 6: this.battlement(ctx, x + 4, 202, 70, 40); break;         // ভূঁইয়ার গড়
+        case id === 7: this.dome(ctx, x + 30, 208, 26); this.bar(ctx, x + 4, 176, 7, 74); this.battlement(ctx, x + 44, 214, 40, 28); break; // ঢাকা: গম্বুজ-মিনার-প্রাচীর
+        default: this.tree(ctx, x + 22, 236, 52); this.tree(ctx, x + 76, 238, 34); break;                    // আম্রকানন: আমগাছের সারি
+      }
     }
     if (id === 0 || id >= 6) {
       ctx.fillStyle = 'rgba(180,220,235,.16)';
       ctx.fillRect(0, GROUND + 26, W, 26);
     }
   }
+  /** কীলকমে: দুই বাঁকা বাহু উঠে গিয়ে নোক — বাংলার ইটের দেওয়ালের নিজস্ব খিলান। */
   private arch(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
     ctx.beginPath();
-    ctx.moveTo(x, y); ctx.lineTo(x, y - h + w / 2);
-    ctx.quadraticCurveTo(x, y - h, x + w / 2, y - h);
-    ctx.quadraticCurveTo(x + w, y - h, x + w, y - h + w / 2);
+    ctx.moveTo(x, y); ctx.lineTo(x, y - h * 0.55);
+    ctx.quadraticCurveTo(x + w * 0.06, y - h, x + w / 2, y - h - h * 0.1);
+    ctx.quadraticCurveTo(x + w * 0.94, y - h, x + w, y - h * 0.55);
     ctx.lineTo(x + w, y); ctx.closePath(); ctx.fill();
   }
-  private dome(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): void {
-    ctx.beginPath(); ctx.arc(x, y, r, Math.PI, 0); ctx.lineTo(x + r, y + 44); ctx.lineTo(x - r, y + 44); ctx.closePath(); ctx.fill();
+  /** দো-ছলা: দুই পাশে ঢাল-ছাদ, মাঝে নוקচওয়ালা শিখর — ছাউনির ঘর আর মন্দির দুটোরই রেখা। */
+  private chala(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.quadraticCurveTo(x + w * 0.14, y - h * 0.7, x + w / 2, y - h);
+    ctx.quadraticCurveTo(x + w * 0.86, y - h * 0.7, x + w, y);
+    ctx.lineTo(x + w * 0.86, y - h * 0.16); ctx.lineTo(x + w * 0.14, y - h * 0.16);
+    ctx.closePath(); ctx.fill();
   }
+  /** ছোট গম্বুজের সারি + কোণের টাওয়েট (বাগেরহাট-পান্ডুয়া ছায়া)। */
+  private domeRow(ctx: CanvasRenderingContext2D, x: number, y: number, n: number, r: number, w: number): void {
+    ctx.fillRect(x, y, w, 42);
+    const step = w / (n + 1);
+    for (let i = 0; i < n; i++) this.dome(ctx, x + step * (i + 1), y, r);
+    ctx.fillRect(x - 5, y - 14, 6, 56); ctx.fillRect(x + w - 1, y - 14, 6, 56);
+  }
+  private dome(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): void {
+    ctx.beginPath();
+    ctx.moveTo(x - r, y);
+    ctx.quadraticCurveTo(x - r, y - r * 1.15, x, y - r * 1.45);   // গোল নয় — একটু নোকচা ছাদ
+    ctx.quadraticCurveTo(x + r, y - r * 1.15, x + r, y);
+    ctx.closePath(); ctx.fill();
+    ctx.fillRect(x - 1, y - r * 1.45 - 5, 2, 5);                  // শিখর-ডাটা
+  }
+  private battlement(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+    ctx.fillRect(x, y, w, h);
+    for (let i = 0; i < 5; i++) ctx.fillRect(x + i * (w / 5), y - 8, w / 10, 8);
+  }
+  /** দেওয়ালের টুকরো: স্তম্াব-বেধ/কর্নিশের মতো সরু ভরপেল। */
+  private bar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+    ctx.fillRect(x, y, w, h);
+  }
+  /** ইটের দেওয়ালে টেরাকোটার প্যানেল-ছন্দ: পুরু রেখা নয়, ফাঁক-রেখাই যথেষ্ট। */
+  private bands(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, n: number): void {
+    ctx.save(); ctx.globalAlpha = 0.5; ctx.fillStyle = 'rgba(255,235,200,.5)';
+    for (let i = 0; i < n; i++) ctx.fillRect(x + 3, y + 4 + i * 7, w - 6, 2);
+    ctx.restore();
+  }
+  /** আমগাছের ছায়া: মোটা ঠার + তিন-চৌকা গুচ্ছছায়া — পলাশীর আম্রকাননের চেনা রেখা। */
+  private tree(ctx: CanvasRenderingContext2D, x: number, y: number, h: number): void {
+    ctx.save();
+    ctx.strokeStyle = ctx.fillStyle as unknown as string; ctx.lineWidth = Math.max(4, h * 0.16);
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - h * 0.42); ctx.stroke();
+    const r = h * 0.5;
+    ctx.beginPath(); ctx.moveTo(x - r * 1.5, y - h * 0.34);
+    for (let i = 0; i <= 4; i++) {
+      const px = x - r * 1.5 + (i / 4) * r * 3;
+      ctx.quadraticCurveTo(px + r * 0.375, y - h * 0.34 - r * (i % 2 ? 1.15 : 1.55), px + r * 0.75, y - h * 0.34);
+    }
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+  /** খেজুর/বাশের পালক — নদীপাড়ার অধ্যায়ে (০, ৬) মাটির ধারে। */
+  private reed(ctx: CanvasRenderingContext2D, x: number, y: number, h: number): void {
+    ctx.save(); ctx.lineWidth = 2;
+    for (let i = 0; i < 4; i++) {
+      const a = -1.35 + i * 0.28;
+      ctx.beginPath(); ctx.moveTo(x, y);
+      ctx.quadraticCurveTo(x + Math.cos(a) * h * 0.4, y - h * 0.7, x + Math.cos(a) * h * 0.8, y - h);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   private boat(ctx: CanvasRenderingContext2D, x: number, y: number, o: { hp: number; maxHp: number }, P: Palette): void {
     const hurt = 1 - o.hp / o.maxHp;
     ctx.save(); ctx.translate(x, y + 6);
@@ -209,14 +293,19 @@ export class Renderer {
     ctx.globalAlpha = 1;
   }
 
-  private puppet(ctx: CanvasRenderingContext2D, f: Fighter, tick: number, P: Palette): void {
+  private puppet(ctx: CanvasRenderingContext2D, f: Fighter, tick: number, P: Palette, role: 'hero' | 'foe' | 'ally' = 'foe'): void {
     const dir = f.facing === 1 ? 1 : -1;
     const depth = 1 + f.y / 420;
     const baseY = GROUND + f.y * 0.5;
     const p = poseOf(f, tick);
     const isHero = f === (null as unknown as Fighter) || f.tone === P.hero;
     void isHero;
-    const ink = this.opts.colorblind ? (f.tone === P.hero ? '#f5f1e4' : f.tone) : f.tone;
+    // শৈলী-নিয়ম (design §৭, খ): পুতুল = আলোর পর্দায় **কালো ছায়া**। আগে শরিলেই
+    // দলের রঙ বসত, ফলে সেটা 'ছায়া-পুতুল' নয়, ফ্যাকাসে কাঠি-মানুষ হয়ে যাচ্ছিল
+    // (হেরো-ফ্রেম কেটে দেখে ধরা পড়েছে)। এখন শরিল কালো, দলের চেনা-রঙ শুধু
+    // কিনারা-আলো — মোবাইলের ছোট পর্দায়ও বন্ধু/শত্রু আলাদা দেখায়।
+    const ink = '#141109';
+    const rim = this.opts.colorblind ? (f.tone === P.hero ? '#f5f1e4' : '#9fd6ff') : f.tone;
     const shadowCol = 'rgba(0,0,0,.3)';
     ctx.save();
     ctx.translate(f.x + p.lunge * dir, baseY);
@@ -230,45 +319,89 @@ export class Renderer {
     const chestY = hipY - 26;
     const headY = chestY - 16;
     // উরু-পা
-    const legF = limb(ctx, 0, hipY, 1.35 + p.legF, 20, 7, ink);
-    limb(ctx, at(legF, 0), at(legF, 1), 1.5 - p.legF * 0.4, 18, 6, ink);
-    const legB = limb(ctx, -2, hipY, 1.75 + p.legB, 20, 7, ink);
-    limb(ctx, at(legB, 0), at(legB, 1), 1.5 - p.legB * 0.4, 18, 6, ink);
+    const legF = limb2(ctx, 0, hipY, 1.35 + p.legF, 20, 9, ink, rim);
+    limb2(ctx, at(legF, 0), at(legF, 1), 1.5 - p.legF * 0.4, 18, 8, ink, rim);
+    const legB = limb2(ctx, -2, hipY, 1.75 + p.legB, 20, 9, ink, rim);
+    limb2(ctx, at(legB, 0), at(legB, 1), 1.5 - p.legB * 0.4, 18, 8, ink, rim);
     // আসল (প্যাচ/চাদর)
     ctx.fillStyle = ink;
     ctx.beginPath();
     ctx.moveTo(-9, chestY + 4); ctx.lineTo(11, chestY + 4);
     ctx.lineTo(9 + p.cloth * 8, hipY + 16); ctx.lineTo(-11 - p.cloth * 10, hipY + 14);
     ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = rim; ctx.lineWidth = 1.6; ctx.stroke();
     // বুক
-    ctx.lineWidth = 13; ctx.strokeStyle = ink; ctx.lineCap = 'round';
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    const bodyPath = (): void => {
+      ctx.beginPath();
+      ctx.moveTo(p.lean * 6 - 9, chestY - 3); ctx.lineTo(p.lean * 6 + 9, chestY - 3);
+      ctx.lineTo(10, hipY - 2); ctx.lineTo(12, hipY + 13); ctx.lineTo(-11, hipY + 13); ctx.lineTo(-9, hipY - 2);
+      ctx.closePath();
+    };
+    ctx.lineWidth = 5; ctx.strokeStyle = rim; bodyPath(); ctx.stroke();
+    ctx.fillStyle = ink; bodyPath(); ctx.fill();
+    ctx.lineWidth = 16; ctx.strokeStyle = rim;
+    ctx.beginPath(); ctx.moveTo(0, hipY); ctx.lineTo(p.lean * 6, chestY); ctx.stroke();
+    ctx.lineWidth = 13; ctx.strokeStyle = ink;
     ctx.beginPath(); ctx.moveTo(0, hipY); ctx.lineTo(p.lean * 6, chestY); ctx.stroke();
     // পিছনের হাত + ঢাল
     const sh: [number, number] = [p.lean * 6, chestY];
-    const back = limb(ctx, at(sh, 0) - 3, at(sh, 1), Math.PI - 0.7 + p.armB, 15, 6, ink);
+    const back = limb2(ctx, at(sh, 0) - 3, at(sh, 1), Math.PI - 0.7 + p.armB, 15, 8, ink, rim);
     if (f.guarding || f.move?.id === 'guard') {
       ctx.fillStyle = P.accent;
       ctx.beginPath(); ctx.ellipse(at(back, 0) - 2, at(back, 1) + 6, 11, 15, -0.3 + p.swordB * 0.2, 0, 6.283); ctx.fill();
       ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1.5; ctx.stroke();
     }
     // সামনের হাত + খড়্গ
-    const front = limb(ctx, at(sh, 0) + 3, at(sh, 1), -0.5 + p.armF, 16, 6, ink);
+    const front = limb2(ctx, at(sh, 0) + 3, at(sh, 1), -0.5 + p.armF, 16, 8, ink, rim);
     const bladeAng = p.sword;
     ctx.strokeStyle = this.opts.colorblind ? '#ffffff' : '#f3ead2';
     ctx.lineWidth = 3.2;
-    const bl = limb(ctx, at(front, 0), at(front, 1), bladeAng, 34, 3.2, this.opts.colorblind ? '#ffffff' : '#f3ead2');
+    const steel = this.opts.colorblind ? '#ffffff' : '#f3ead2';
+    const bl = limb(ctx, at(front, 0), at(front, 1), bladeAng, 34, 3.2, steel);
+    // বাঁকালো ধার = তলোয়ার (কাটা/কোপ/সংকল্প); সোজা ধার = রূপা/ধপ (পোঁতা, রোধ)।
+    const curved = f.move === null || (f.move.id !== 'thrust' && f.move.id !== 'guard');
+    const nx = Math.cos(bladeAng + Math.PI / 2), ny = Math.sin(bladeAng + Math.PI / 2);
     ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(at(front, 0), at(front, 1)); ctx.lineTo(at(bl, 0), at(bl, 1)); ctx.stroke();
+    const mx = (at(front, 0) + at(bl, 0)) / 2 + nx * 7, my = (at(front, 1) + at(bl, 1)) / 2 + ny * 7;
+    ctx.beginPath(); ctx.moveTo(at(front, 0), at(front, 1));
+    if (curved) ctx.quadraticCurveTo(mx, my, at(bl, 0), at(bl, 1));
+    else ctx.lineTo(at(bl, 0), at(bl, 1));
+    ctx.stroke();
+    if (curved) {   // তলোয়ারের ধার: বাঁকানো ফলক ভরে দিলে সিলুয়েটটা পুতুলের মতো হয়
+      ctx.fillStyle = steel; ctx.beginPath();
+      ctx.moveTo(at(front, 0), at(front, 1));
+      ctx.quadraticCurveTo(mx, my, at(bl, 0), at(bl, 1));
+      ctx.quadraticCurveTo(mx - nx * 4, my - ny * 4, at(front, 0), at(front, 1));
+      ctx.closePath(); ctx.fill();
+    }
     // হাতা
     ctx.strokeStyle = P.accent; ctx.lineWidth = 4;
     limb(ctx, at(front, 0), at(front, 1), bladeAng + Math.PI, 6, 4, P.accent);
     // মাথা + জুলফা/সিরপট্টি
     ctx.fillStyle = ink;
     ctx.beginPath(); ctx.arc(p.lean * 8, headY, 8.4, 0, 6.283); ctx.fill();
-    ctx.beginPath();
-    ctx.moveTo(p.lean * 8 - 9, headY - 2);
-    ctx.quadraticCurveTo(p.lean * 8 - 1, headY - 15 - p.cloth * 3, p.lean * 8 + 9, headY - 1);
-    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = rim; ctx.lineWidth = 1.6; ctx.stroke();
+    const hx = p.lean * 8;
+    ctx.fillStyle = ink;
+    if (role === 'hero') {
+      // খড়্গধরের নিজের চিহ্ন: গোল টোপর — মুসলিম বাংলার পদাতিকের সাধারণ মাথার ঢাকা
+      ctx.beginPath(); ctx.ellipse(hx, headY - 8, 7.4, 4.2, 0, Math.PI, 0); ctx.fill();
+      ctx.fillRect(hx - 7.4, headY - 8, 14.8, 2.4);
+    } else if (role === 'ally') {
+      ctx.beginPath(); ctx.moveTo(hx - 8, headY - 4);
+      ctx.quadraticCurveTo(hx, headY - 12, hx + 8, headY - 4);
+      ctx.lineTo(hx + 11, headY + 4); ctx.closePath(); ctx.fill();   // পল্লীর দস্তর
+    } else {
+      ctx.beginPath(); ctx.moveTo(hx - 9, headY - 2);
+      ctx.quadraticCurveTo(hx - 1, headY - 15 - p.cloth * 3, hx + 9, headY - 1);
+      ctx.closePath(); ctx.fill();                                     // প্রতিপক্ষের জুটি
+    }
+    if (f.guarding || f.move?.id === 'guard') {   // ঢালের বস্টন: চামড়ার গোল ঢালের নিজের চিহ্ন
+      ctx.fillStyle = 'rgba(255,255,255,.3)';
+      ctx.beginPath(); ctx.arc(at(back, 0) - 2, at(back, 1) + 6, 2.6, 0, 6.283); ctx.fill();
+    }
     if (isActive(MOVES.guard, f.frame) && f.phase === 'guard') {
       ctx.globalAlpha = 0.5;
       ctx.strokeStyle = '#cfe6ef'; ctx.lineWidth = 2;
