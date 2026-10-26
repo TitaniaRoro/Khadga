@@ -1,15 +1,18 @@
 /**
- * src/render.ts — ছায়া-পুতুল রেন্ডারার (Canvas2D)।
+ * src/render.ts — ছায়া-পুতুল রেন্ডারার, আধুনিক আর্কেড-রূপে (Canvas2D)।
  *
- * শৈলী-সিদ্ধান্ত (design §৭, খ): ফ্ল্যাট সিলুয়েট + জোড়া-ঘূর্ণন অংশ, চামড়ার পুতুল/যাত্রার
- * পট-ভাব। কোনো ছবি-ফাইল নেই — পুরো শরিল ১৩টি টুকরোর (মাথা, বুক, কোমর, ২ বাহু,
- * ২ উরু, ২ পা, ঢাল, খড়্গ, পট-আঁচল) প্যারা-অ্যারে থেকে আঁকা।
+ * শৈলী-সিদ্ধান্ত আগের মতোই (design §৭): কালো ছায়া-শরীর + রঙিন কিনারা-আলো,
+ * কোনো ছবি-ফাইল নেই, রক্ত নেই। যা বদলেছে তা উপস্থাপন — অভিযোগ ছিল
+ * "সব সমতল, কাঠি-মানুষের মতো, নিস্তেজ ধূসর"। তাই:
+ *  · ডিফল্ট রূপ এখন পূর্ণ-রেজ্যোলিউশন HD (অর্ধ-রেজ পিক্সেল-রূপ টগলে অপশন);
+ *  · চরিত্র মোটা-গড়া ভরা আকৃতি, হাঁটার চক্র, তলোয়ারের ঝাপটা-রেখা (swoosh),
+ *    ধরনভেদে অস্ত্র/ঢাল/শরির (ঢালধারী, বর্শাধারী, দ্রুতগামী, বস);
+ *  · ৪-তলা দৃশ্য: আকাশ (সূর্য, মেঘ, পাখি) → দূরের আকাশরেখা → কাছের স্থাপত্য
+ *    (আলো-জানালা, পতাকা) → সামনের ঘাস/খাগড়া; ক্যামেরা-দোলন ও ঝাঁকুনি;
+ *  · কণা-ব্যবস্থা: ধুলো, ঝিলিক, টুকরো, ভাসা ধুলিকণা; hit-flash, ড্যাশ-ভূতছায়া।
  *
- * কেন এই পথ: ফাইল-আকার প্রায় শূন্য (৬MB বাজেটে শিল্পীর বোঝা নেই), মোবাইলে দ্রুত,
- * আর আঁকার অসম্পূর্ণতা শৈলীতেই ঢাকা পড়ে। ইমেজ-বেইল্ড ফ্রেম দরকার হলে এই এক ইন্টারফেস
- * বদলে ৩D→স্প্রাইট বেক বসবে — সিমুলেশন-স্তর অক্ষত থাকবে।
- *
- * রক্ত নেই: আঘাতে ধুলো/রেখা-ফোটকা, রঙ-পাল্টানো, কাঁপুনি — এই তিনটেই।
+ * ইমেজ-ভিত্তিক ফ্রেম দরকার হলে এই এক ইন্টারফেস বদলেই ৩D→স্প্রাইট বেক বসবে —
+ * সিমুলেশন-স্তর অক্ষত থাকবে।
  */
 import type { Fighter } from './fighter.ts';
 import { MOVES, isActive, totalFrames } from './frames.ts';
@@ -20,8 +23,7 @@ export interface ViewOpts {
   colorblind: boolean;
   /** অধ্যায়-ভিত্তিক রঙ (মাটি/নদী/ইট/সোনালি) — স্থাপত্য-অনুপ্রেরণা, ছবি নয়। */
   palette: Palette;
-  /** আর্কেড-পিক্সেল মোড (ডিফল্ট চালু): ব্যাকিং-স্টোর অর্ধেক রেজ্যোলিউশন,
-   *  ব্রাউজার nearest-neighbour-এ বড় করে → দানা-দানা পিক্সেল + CRT ছায়া। */
+  /** পিক্সেল-আর্কেড মোড (ঐচ্ছিক স্মৃতি-রূপ): ব্যাকিং-স্টোর অর্ধেক + CRT ছায়া। */
   pixel?: boolean;
 }
 
@@ -34,92 +36,121 @@ const mix = (a: string, b: string, t: number): string => {
   const r = Math.round(x[0] + (y[0] - x[0]) * t), g = Math.round(x[1] + (y[1] - x[1]) * t), bl = Math.round(x[2] + (y[2] - x[2]) * t);
   return `rgb(${r},${g},${bl})`;
 };
-/** বায়ার ৪×৪ থ্রেশহোল্ড — দুই টোনের মাঝের জায়গা দানা-মিশিয়ে ফাঁক করা হয়,
- *  তাই গ্রেডিয়েন্ট সমতল লাগে না আর প্যালেট সীমিত-মনে পড়ে (আর্কেডের ভাব)। */
-const BAYER = [0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5];
-const bayer = (x: number, y: number, n: number): number => (BAYER[((y & 3) << 2) | (x & 3)]! + 0.5) / 16 * n;
 const BN_DIGIT = ['০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯'];
 const bnNum = (n: number): string => String(n).replace(/\d/g, (d) => BN_DIGIT[Number(d)] ?? d);
+/** নির্ণয়যোগ্য ছদ্ম-এলোমেলো (দৃশ্যের দানা/জানালা প্রতি ফ্রেমে নাচে না)। */
+const hash = (i: number): number => { const s = Math.sin(i * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
 
 export interface Palette {
   ground: string; sky: string; ink: string; accent: string; hero: string; enemy: string; ally: string;
 }
 
-/** অধ্যায়ের ধাঁচ থেকে প্যালেট — ০…৮। */
+/** অধ্যায়ের ধাঁচ থেকে প্যালেট — আগের চেয়ে সজীব (ধূসর-অভিযোগের উত্তরে স্যাচুরেশন)। */
 export const PALETTES: Palette[] = [
-  { ground: '#3a4a3c', sky: '#7e94a0', ink: '#171410', accent: '#2c6f6a', hero: '#e9dfc8', enemy: '#5b5346', ally: '#7f9c6b' },
-  { ground: '#4a3f2c', sky: '#c39a5a', ink: '#191410', accent: '#8a4a22', hero: '#efe3c6', enemy: '#4f4636', ally: '#8f8358' },
-  { ground: '#41414d', sky: '#94a3b8', ink: '#14161c', accent: '#3f5f8a', hero: '#e6e3d6', enemy: '#3d4250', ally: '#7d8698' },
-  { ground: '#5b4a2f', sky: '#d8b06a', ink: '#1d1608', accent: '#a8761f', hero: '#f2e6c2', enemy: '#57472e', ally: '#93803f' },
-  { ground: '#6a4a3a', sky: '#e0b48a', ink: '#20140d', accent: '#b4763c', hero: '#f6e9cd', enemy: '#62493c', ally: '#a89360' },
-  { ground: '#4d5545', sky: '#b6b48c', ink: '#171a14', accent: '#7c8f4a', hero: '#eee6c8', enemy: '#4d5449', ally: '#8b9464' },
-  { ground: '#2f4a52', sky: '#8fb0b8', ink: '#101c20', accent: '#2e7d8c', hero: '#e7eee6', enemy: '#3a4f57', ally: '#6f9488' },
-  { ground: '#5a3f46', sky: '#dcae9f', ink: '#1e1215', accent: '#9c4b52', hero: '#f5e7d4', enemy: '#5d4348', ally: '#a08571' },
-  { ground: '#443f52', sky: '#b9a7b5', ink: '#15131c', accent: '#6a4f8a', hero: '#ece6f0', enemy: '#4a4458', ally: '#8a8398' },
+  { ground: '#3f6b4a', sky: '#8fd0dd', ink: '#122019', accent: '#1f9d8f', hero: '#ffe9b8', enemy: '#5b5346', ally: '#8fd07a' },
+  { ground: '#7a5a30', sky: '#f2b25c', ink: '#241708', accent: '#d96f2e', hero: '#ffeec2', enemy: '#4f4636', ally: '#c9a558' },
+  { ground: '#46506e', sky: '#9fb6dd', ink: '#12182a', accent: '#4d7fd6', hero: '#e8f0ff', enemy: '#3d4250', ally: '#93a8cc' },
+  { ground: '#8a6a34', sky: '#f7c76a', ink: '#2a1c06', accent: '#e0a422', hero: '#fff0bd', enemy: '#57472e', ally: '#c4a44f' },
+  { ground: '#95573d', sky: '#ffb98a', ink: '#2b1409', accent: '#e0722f', hero: '#ffedcb', enemy: '#62493c', ally: '#d0a468' },
+  { ground: '#5f7448', sky: '#d3d18d', ink: '#1a2112', accent: '#93b83e', hero: '#f4ecc2', enemy: '#4d5449', ally: '#a9b86e' },
+  { ground: '#2e5f6e', sky: '#8fd3dd', ink: '#0b2129', accent: '#22a7b8', hero: '#e4f6f0', enemy: '#3a4f57', ally: '#79c2ae' },
+  { ground: '#7c4650', sky: '#ffc4a3', ink: '#2a1116', accent: '#d65a6e', hero: '#fdeeda', enemy: '#5d4348', ally: '#cf9c7d' },
+  { ground: '#55497a', sky: '#cdb1dd', ink: '#191231', accent: '#8a5fd0', hero: '#f2eaff', enemy: '#4a4458', ally: '#ac9ccf' },
 ];
 
 const W = 760, H = 360, GROUND = 268;
+export const STAGE = { W, H, GROUND } as const;
 
-/** ১৩ টুকরোর কঙ্কাল: প্রতিটি অংশের অ্যাঙ্গেল এখানেই ঠিক হয় (মুভের ফ্রেম থেকে)। */
 interface Pose {
   lean: number; crouch: number; sword: number; swordB: number;
   armF: number; armB: number; legF: number; legB: number; lunge: number; cloth: number;
 }
 
-function poseOf(f: Fighter, tick: number): Pose {
-  const p: Pose = { lean: 0, crouch: 0, sword: -0.5, swordB: -0.5, armF: -0.6, armB: 0.5, legF: 0.2, legB: -0.2, lunge: 0, cloth: 0 };
-  const m = f.move;
-  if (m === null) {
-    const b = Math.sin((tick + f.x) / 22) * 0.03;
-    p.sword = -0.55 + b; p.cloth = b * 2; p.lean = 0.04;
+function poseOf(f: Fighter, tick: number, walkPhase: number, moving: number): Pose {
+  const p: Pose = { lean: 0, crouch: 0, sword: -0.5, swordB: -0.5, armF: -0.6, armB: 0.5, legF: 0.22, legB: -0.22, lunge: 0, cloth: 0 };
+  // হাঁটার চক্র ও নিঃশ্বাসের দোলন — স্থির কাঠি-ভঙ্গির অবসান
+  const breathe = Math.sin((tick + f.uid * 17) / 21) * 0.035;
+  p.sword = -0.55 + breathe; p.cloth = breathe * 2.2; p.lean = 0.05; p.crouch = Math.sin((tick + f.uid * 17) / 21) * 0.9;
+  if (moving > 0.25 && f.phase === 'idle') {
+    const s = Math.sin(walkPhase);
+    p.legF = s * 0.62; p.legB = -s * 0.62;
+    p.crouch += Math.abs(Math.cos(walkPhase)) * 1.6;
+    p.lean = 0.13; p.armB = 0.5 + s * 0.3;
+  }
+  if (f.telegraph > 0) {   // বড় আঘাতের আগে: অস্ত্র উঁচিয়ে কাঁপে — পড়া যায়
+    p.sword = -2.5 + Math.sin(tick * 1.6) * 0.07; p.armF = -2.05; p.lean = -0.14; p.crouch = 3;
     return p;
   }
-  const fr = f.frame;
-  const st = m.startup, ac = m.startup + m.active - 1;
-  const prog = fr <= st ? fr / Math.max(1, m.startup)
-    : fr <= ac ? 1
-      : 1 - (fr - ac) / Math.max(1, totalFrames(m) - 1 - ac);
-  switch (m.id) {
-    case 'cut': p.sword = -1.35 + prog * 1.9; p.armF = -1.2 + prog * 1.6; p.lean = 0.1 * prog; p.lunge = prog * 5; break;
-    case 'heavy': p.sword = -2.25 + prog * 3.1; p.armF = -1.85 + prog * 2.5; p.lean = 0.22 * prog; p.crouch = -3 * prog; p.lunge = prog * 9; break;
-    case 'thrust': p.sword = -0.12; p.armF = -0.1; p.lunge = prog * 20; p.lean = 0.12 * prog; p.crouch = 4 * prog; break;
-    case 'guard': p.swordB = -1.5; p.armB = -1.15; p.crouch = 5; p.lean = -0.06; break;
-    case 'side': p.lean = -0.34; p.crouch = 8; p.cloth = 0.5; p.sword = -0.1; break;
-    case 'resolve': p.sword = -2.6 + prog * 4.4; p.armF = -2 + prog * 3.2; p.lean = 0.3 * prog; p.cloth = 0.8 * prog; p.lunge = prog * 26; break;
+  const m = f.move;
+  if (m !== null) {
+    const fr = f.frame;
+    const st = m.startup, ac = m.startup + m.active - 1;
+    const raw = fr <= st ? fr / Math.max(1, m.startup)
+      : fr <= ac ? 1
+        : 1 - (fr - ac) / Math.max(1, totalFrames(m) - 1 - ac);
+    const prog = Math.max(0, Math.min(1, raw));
+    const ease = prog * prog * (3 - 2 * prog);
+    switch (m.id) {
+      case 'cut': p.sword = -1.5 + ease * 2.2; p.armF = -1.3 + ease * 1.8; p.lean = 0.13 * ease; p.lunge = ease * 6; break;
+      case 'heavy': p.sword = -2.5 + ease * 3.5; p.armF = -2 + ease * 2.8; p.lean = 0.26 * ease; p.crouch = -3 * (1 - ease) + 3 * ease; p.lunge = ease * 10; break;
+      case 'thrust': p.sword = -0.1; p.armF = -0.08; p.lunge = ease * 24; p.lean = 0.15 * ease; p.crouch = 5 * ease; break;
+      case 'guard': p.swordB = -1.5; p.armB = -1.25; p.crouch = 6; p.lean = -0.06; break;
+      case 'side': p.lean = 0.42; p.crouch = 9; p.cloth = 0.7; p.sword = -0.2; p.legF = 0.8; p.legB = -0.7; break;
+      case 'resolve': p.sword = -2.8 + ease * 5; p.armF = -2.2 + ease * 3.6; p.lean = 0.34 * ease; p.cloth = ease; p.lunge = ease * 30; break;
+    }
   }
-  if (f.phase === 'hitstun') { p.lean = -0.42; p.crouch = 6; p.sword = 0.9; p.cloth = -0.4; }
-  if (f.phase === 'blockstun') { p.lean = -0.2; p.crouch = 7; p.swordB = -1.6; }
-  if (f.phase === 'stunned') { p.lean = -0.55; p.crouch = 12; p.armF = 0.9; p.armB = 1.1; p.sword = 1.4; }
-  if (f.phase === 'downed') { p.lean = -1.3; p.crouch = 26; p.cloth = 1; }
+  if (f.phase === 'hitstun') { p.lean = -0.45; p.crouch = 7; p.sword = 1; p.cloth = -0.5; }
+  if (f.phase === 'blockstun') { p.lean = -0.22; p.crouch = 8; p.swordB = -1.65; }
+  if (f.phase === 'stunned') { p.lean = -0.5 + Math.sin(tick / 7) * 0.08; p.crouch = 13; p.armF = 1; p.armB = 1.2; p.sword = 1.5; }
+  if (f.phase === 'downed') { p.lean = -1.35; p.crouch = 30; p.cloth = 1; }
   return p;
 }
 
 const at = (t: [number, number], i: 0 | 1): number => t[i] ?? 0;
 
+/** শীর্ষে-চাপা অঙ্গ: রেখার বদলে ভরা চতুর্ভুজ, তাই শরিলে ওজন দেখায়। */
+function seg(ctx: CanvasRenderingContext2D, x: number, y: number, ang: number, len: number, w0: number, w1: number, color: string): [number, number] {
+  const ex = x + Math.cos(ang) * len, ey = y + Math.sin(ang) * len;
+  const px = Math.cos(ang + Math.PI / 2), py = Math.sin(ang + Math.PI / 2);
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x + px * w0 / 2, y + py * w0 / 2);
+  ctx.lineTo(ex + px * w1 / 2, ey + py * w1 / 2);
+  ctx.lineTo(ex - px * w1 / 2, ey - py * w1 / 2);
+  ctx.lineTo(x - px * w0 / 2, y - py * w0 / 2);
+  ctx.closePath(); ctx.fill();
+  return [ex, ey];
+}
+function seg2(ctx: CanvasRenderingContext2D, x: number, y: number, ang: number, len: number, w: number, ink: string, rim: string): [number, number] {
+  seg(ctx, x, y, ang, len, w + 3.4, w * 0.62 + 3.4, rim);
+  return seg(ctx, x, y, ang, len, w, w * 0.62, ink);
+}
 function limb(ctx: CanvasRenderingContext2D, x: number, y: number, ang: number, len: number, thick: number, color: string): [number, number] {
   const ex = x + Math.cos(ang) * len, ey = y + Math.sin(ang) * len;
   ctx.strokeStyle = color; ctx.lineWidth = thick; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(ex, ey); ctx.stroke();
   return [ex, ey];
 }
-/** ছায়ার দেহ + কিনারা-আলো: দুই পাস, তাই পুতুলটা পর্দা থেকে আলাদা দেখায়। */
-function limb2(ctx: CanvasRenderingContext2D, x: number, y: number, ang: number, len: number, thick: number, ink: string, rim: string): [number, number] {
-  limb(ctx, x, y, ang, len, thick + 3, rim);
-  return limb(ctx, x, y, ang, len, thick, ink);
-}
+
+interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; r: number; col: string; kind: 'dot' | 'spark' | 'mote'; rot: number }
+interface Track { lx: number; ly: number; phase: number; speed: number; maxHp: number; ghosts: { x: number; y: number; dir: number; life: number }[] }
 
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private shake = 0;
-  private dust: { x: number; y: number; vx: number; vy: number; life: number; r: number }[] = [];
-  private flash: { x: number; y: number; life: number }[] = [];
-  /** ভাসমান ক্ষতি-সংখ্যা আর আর্কেড-ঘোষণা ('লড়াই!', 'কো!')। */
-  private pops: { x: number; y: number; vy: number; life: number; txt: string; col: string }[] = [];
-  private say: { text: string; life: number; sub: string } | null = null;
+  private particles: Particle[] = [];
+  private flash: { x: number; y: number; life: number; col: string }[] = [];
+  private pops: { x: number; y: number; vy: number; life: number; max: number; txt: string; col: string; big: boolean }[] = [];
+  private say: { text: string; life: number; max: number; sub: string } | null = null;
   private white = 0;
-  private tex: { key: string; img: ImageData } | null = null;
+  private camX = 0;
+  private zoomPunch = 0;
+  private lastObjHp = -1;
+  private objFlash = 0;
+  private tracks = new Map<number, Track>();
   readonly canvas: HTMLCanvasElement;
   private opts: ViewOpts;
+  private scale = 1;
 
   constructor(canvas: HTMLCanvasElement, opts: ViewOpts) {
     this.canvas = canvas;
@@ -132,287 +163,249 @@ export class Renderer {
 
   setOpts(o: ViewOpts): void { this.opts = o; }
 
-  private get pixel(): boolean { return this.opts.pixel !== false; }
+  private get pixel(): boolean { return this.opts.pixel === true; }
 
   resize(): void {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const box = this.canvas.getBoundingClientRect();
     const cssW = box.width || W;
     const scale = cssW / W;
-    // পিক্সেল মোড: ব্যাকিং-স্টোর ১/২ (৩৮০×১৮০), CSS-এ nearest-neighbour-এ প্রসারিত।
     const q = this.pixel ? 0.5 : 1;
     this.canvas.width = Math.max(2, Math.round(cssW * dpr * q));
     this.canvas.height = Math.max(2, Math.round(H * scale * dpr * q));
     this.ctx.setTransform(this.canvas.width / W, 0, 0, this.canvas.width / W, 0, 0);
-    this.ctx.imageSmoothingEnabled = false;
+    this.ctx.imageSmoothingEnabled = !this.pixel;
     this.scale = scale * dpr * q;
-    this.tex = null;   // রেজ্যোলিউশন বদলালে টেক্সচার আবার বানাতে হবে
   }
-  private scale = 1;
 
-  /** আঘাতের সংখ্যা/শব্দ-বাঁধন: ক্ষতি-পপ, বড় হলে পর্দা-ঝলক। */
-  pop(x: number, y: number, txt: string, col = '#f7f0dc'): void {
-    this.pops.push({ x, y: y - 44, vy: -1.15, life: 40, txt, col });
+  pop(x: number, y: number, txt: string, col = '#f7f0dc', big = false): void {
+    if (this.pops.length > 14) this.pops.shift();
+    this.pops.push({ x, y: y - 52, vy: -1.25, life: big ? 52 : 40, max: big ? 52 : 40, txt, col, big });
   }
-  announce(text: string, sub = '', frames = 96): void { this.say = { text, sub, life: frames }; }
-
-  /** পিক্সেল-গ্রিডে থিতু করা: ০.৫-স্কেলে আধা-পিক্সেল রেখা ঝাপসা হতো। */
-  private sn(v: number): number { return this.pixel ? Math.round(v * 2) / 2 : Math.round(v); }
+  announce(text: string, sub = '', frames = 96): void { this.say = { text, sub, life: frames, max: frames }; }
 
   kick(power: number): void {
     if (this.opts.reduceMotion) return;
     this.shake = Math.max(this.shake, power);
-    if (power >= 7) this.white = Math.max(this.white, 3);   // ভারী ঘায়ে সাদা ঝলক
+    if (power >= 7) this.white = Math.max(this.white, 3);
+    if (power >= 9) this.zoomPunch = Math.max(this.zoomPunch, 0.035);
   }
 
   burst(x: number, y: number, n = 10, col = '#e9dfc8'): void {
+    const cols = [col, '#ffe9a8', '#ffffff'];
     for (let i = 0; i < n; i++) {
-      const a = Math.random() * Math.PI * 2, s = 1 + Math.random() * 3.4;
-      this.dust.push({ x, y: y - 30, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 1.4, life: 22 + Math.random() * 14, r: 1.5 + Math.random() * 2.6 });
+      const a = Math.random() * Math.PI * 2, s = 1 + Math.random() * 3.8;
+      this.particles.push({
+        x, y: y - 34, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 1.5,
+        life: 20 + Math.random() * 16, max: 36, r: 1.4 + Math.random() * 2.6,
+        col: cols[i % cols.length]!, kind: i % 3 === 0 ? 'spark' : 'dot', rot: a,
+      });
     }
-    void col;
-    this.flash.push({ x, y: y - 34, life: 9 });
+    this.flash.push({ x, y: y - 38, life: 9, col });
+    if (this.particles.length > 260) this.particles.splice(0, this.particles.length - 260);
+  }
+
+  /** রেডিয়াল গ্রেডিয়েন্ট নিরাপদে (স্টাব-ক্যানভাসে না থাকলে সমতল রঙেই ফিরি)। */
+  private radial(x: number, y: number, r: number, inner: string, outer: string): string | CanvasGradient {
+    try {
+      const g = this.ctx.createRadialGradient(x, y, 0, x, y, r);
+      if (!g || typeof g.addColorStop !== 'function') return inner;
+      g.addColorStop(0, inner); g.addColorStop(1, outer);
+      return g;
+    } catch { return inner; }
+  }
+  private linear(y0: number, y1: number, stops: [number, string][]): string | CanvasGradient {
+    try {
+      const g = this.ctx.createLinearGradient(0, y0, 0, y1);
+      if (!g || typeof g.addColorStop !== 'function') return stops[0]![1];
+      for (const [o, c] of stops) g.addColorStop(o, c);
+      return g;
+    } catch { return stops[0]![1]; }
   }
 
   draw(sim: Sim, tick: number): void {
     const { ctx } = this;
     const P = this.opts.palette;
+    // ক্যামেরা: খেলোয়াড়ের দিকে আলতো টান + ভারী আঘাতে ঝাঁকুনি-জুম
+    const focus = Math.max(-34, Math.min(34, (sim.player.x - 380) * 0.13));
+    this.camX += (focus - this.camX) * (this.opts.reduceMotion ? 0.3 : 0.06);
+    this.zoomPunch *= 0.9;
+
+    this.sky(sim, P, tick);
+
     ctx.save();
+    const z = 1 + (this.opts.reduceMotion ? 0 : this.zoomPunch);
+    ctx.translate(W / 2, H / 2); ctx.scale(z, z); ctx.translate(-W / 2, -H / 2);
     if (this.shake > 0.4) {
       ctx.translate((Math.random() - 0.5) * this.shake, (Math.random() - 0.5) * this.shake * 0.6);
       this.shake *= 0.82;
     }
-    // আকাশ + মাটি: দিদার-করা টেক্সচার (একবার বানিয়ে প্রতি ফ্রেমে বসানো হয়)
-    if (!this.paintGround(P)) {
-      const g = ctx.createLinearGradient(0, 0, 0, H);
-      g.addColorStop(0, P.sky); g.addColorStop(0.62, P.sky); g.addColorStop(0.63, P.ground); g.addColorStop(1, P.ink);
-      ctx.fillStyle = g; ctx.fillRect(-20, -20, W + 40, H + 40);
-    }
-    // দুই তলার প্যারালাক্স: দূরের সারি ধীরে-ছোট, কাছের সারি দ্রুত-বড় → সমতল ভাব কাটে
-    ctx.save(); ctx.globalAlpha = 0.42;
-    this.backdrop(sim, P, tick, 0.45, 0.72);
+    ctx.translate(-this.camX * 0.35, 0);
+    ctx.save(); ctx.globalAlpha = 0.4;
+    this.backdrop(sim, P, tick, 0.45, mix(P.sky, P.ink, 0.5));
     ctx.restore();
-    this.backdrop(sim, P, tick, 1, 1);
+    this.groundPlane(sim, P, tick);
+    ctx.translate(-this.camX * 0.65, 0);
+    this.backdrop(sim, P, tick, 1, mix(P.ink, P.ground, 0.3));
+    if (sim.ch.id === 0 || sim.ch.id >= 6) this.water(P, tick);
 
-    if (sim.objective) this.boat(ctx, sim.objective.x, GROUND + sim.objective.y * 0.5, sim.objective, P);
+    if (sim.objective) this.objectiveDraw(sim, P, tick);
+    for (const pk of sim.pickups) this.pickupDraw(pk.x, GROUND + pk.y * 0.5, pk.life, pk.seed, P, tick);
 
     const list = [...sim.enemies.map((f) => [f, 'foe'] as const),
       ...(sim.ally ? [[sim.ally, 'ally'] as const] : []),
       [sim.player, 'hero'] as const]
       .sort((a, b) => a[0].y - b[0].y);
-    for (const [f, role] of list) this.puppet(ctx, f, tick, P, role);
+    for (const [f, role] of list) this.puppet(ctx, f, tick, P, role, sim);
+    ctx.restore();
 
-    // ধুলো
-    for (const d of this.dust) {
-      d.x += d.vx; d.y += d.vy; d.vy += 0.16; d.life -= 1;
-      ctx.globalAlpha = Math.max(0, d.life / 34);
-      ctx.fillStyle = '#e9dfc8';
-      ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, 6.283); ctx.fill();
+    this.fxLayer(sim, P, tick);
+    this.foreground(sim, P, tick);
+    this.announceLayer(P);
+
+    if (this.white > 0) { ctx.fillStyle = `rgba(255,250,235,${0.08 * this.white})`; ctx.fillRect(0, 0, W, H); this.white -= 1; }
+    // প্রাণ কমলে কিনারায় সতর্ক-আভা
+    const hpRatio = sim.player.hp / 240;
+    if (sim.player.alive && hpRatio < 0.28) {
+      const pulse = this.opts.reduceMotion ? 0.16 : 0.13 + Math.sin(tick / 6) * 0.05;
+      ctx.fillStyle = this.radial(W / 2, H / 2, W * 0.62, 'rgba(160,40,25,0)', `rgba(160,40,25,${pulse + 0.14})`);
+      ctx.fillRect(0, 0, W, H);
+    }
+    if (sim.player.meter >= 100 && sim.player.alive) {
+      ctx.strokeStyle = `rgba(255,214,110,${this.opts.reduceMotion ? 0.35 : 0.3 + Math.sin(tick / 5) * 0.14})`;
+      ctx.lineWidth = 3; ctx.strokeRect(2, 2, W - 4, H - 4);
+    }
+    if (this.pixel) this.scanlines();
+  }
+
+  // ─── দৃশ্যের তলাসমূহ ──────────────────────────────────────────────────────
+  private sky(sim: Sim, P: Palette, tick: number): void {
+    const { ctx } = this;
+    ctx.fillStyle = this.linear(0, GROUND, [
+      [0, mix(P.sky, '#16283f', 0.38)], [0.55, P.sky], [0.86, mix(P.sky, '#ffe3ae', 0.42)], [1, mix(P.sky, '#ffe3ae', 0.55)],
+    ]);
+    ctx.fillRect(0, 0, W, GROUND + 2);
+    // সূর্য: আভা + থালা + ধীরে ঘোরা রশ্মি
+    const sx = W * 0.78 - this.camX * 0.2, sy = 58;
+    ctx.fillStyle = this.radial(sx, sy, 86, 'rgba(255,232,170,.75)', 'rgba(255,232,170,0)');
+    ctx.fillRect(sx - 86, sy - 86, 172, 172);
+    // (ঘূর্ণায়মান রশ্মি-আয়ত আগে ফুলের মতো দেখাত — শুধু আভাই যথেষ্ট)
+    ctx.fillStyle = '#fff3cd';
+    ctx.beginPath(); ctx.arc(sx, sy, 21, 0, 6.283); ctx.fill();
+    // মেঘ
+    ctx.fillStyle = 'rgba(255,255,255,.5)';
+    for (let i = 0; i < 5; i++) {
+      const cx = ((i * 191 + tick * (0.08 + (i % 3) * 0.05) * (this.opts.reduceMotion ? 0 : 1)) % (W + 220)) - 110;
+      const cy = 26 + (i % 3) * 26 + hash(i * 7) * 12;
+      const r = 13 + hash(i * 3) * 10;
+      for (const [ox, oy, or2] of [[0, 0, 1], [r * 0.9, 3, 0.72], [-r * 0.9, 4, 0.64], [r * 0.35, -5, 0.8]] as const) {
+        ctx.beginPath(); ctx.ellipse(cx + ox, cy + oy, r * or2 * 1.5, r * or2 * 0.62, 0, 0, 6.283); ctx.fill();
+      }
+    }
+    // পাখির ঝাঁক
+    if (!this.opts.reduceMotion) {
+      ctx.strokeStyle = 'rgba(20,24,30,.55)'; ctx.lineWidth = 1.6;
+      for (let i = 0; i < 3; i++) {
+        const bx = ((tick * 0.55 + i * 46) % (W + 160)) - 80;
+        const by = 44 + i * 13 + Math.sin((tick + i * 9) / 16) * 4;
+        const flap = Math.sin(tick / 5 + i) * 3.4;
+        ctx.beginPath();
+        ctx.moveTo(bx - 7, by + flap); ctx.quadraticCurveTo(bx - 2, by - 3, bx, by);
+        ctx.quadraticCurveTo(bx + 2, by - 3, bx + 7, by + flap); ctx.stroke();
+      }
+    }
+    // দূরের পাহাড়-রেখা
+    ctx.fillStyle = mix(P.sky, P.ink, 0.26);
+    ctx.beginPath(); ctx.moveTo(0, GROUND);
+    for (let x = 0; x <= W; x += 56) ctx.lineTo(x, GROUND - 20 - Math.sin(x * 0.008 + sim.ch.id * 1.7) * 13 - Math.sin(x * 0.0021 + 2) * 8);
+    ctx.lineTo(W, GROUND); ctx.closePath(); ctx.fill();
+  }
+
+  private groundPlane(sim: Sim, P: Palette, tick: number): void {
+    const { ctx } = this;
+    ctx.fillStyle = this.linear(GROUND, H, [[0, mix(P.ground, '#ffe3ae', 0.13)], [0.35, P.ground], [1, mix(P.ground, '#000000', 0.62)]]);
+    ctx.fillRect(-60, GROUND, W + 160, H - GROUND + 10);
+    // লড়াইয়ের পাটাতন: হালকা ডিম্ব-মঞ্চ → চরিত্ররা ভাসে না, মঞ্চে বসে
+    ctx.fillStyle = 'rgba(255,240,200,.07)';
+    ctx.beginPath(); ctx.ellipse(W / 2, GROUND + 40, 450, 58, 0, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,240,200,.13)'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(W / 2, GROUND + 40, 450, 58, 0, 0.2, Math.PI - 0.2); ctx.stroke();
+    // দৃষ্টি-রেখা ও মাটির দানা (স্থির হ্যাশে)
+    ctx.strokeStyle = 'rgba(0,0,0,.16)'; ctx.lineWidth = 1;
+    for (const [oy, a] of [[10, 0.5], [26, 0.36], [48, 0.26], [76, 0.18]] as const) {
+      ctx.globalAlpha = a; ctx.beginPath(); ctx.moveTo(-40, GROUND + oy); ctx.lineTo(W + 80, GROUND + oy); ctx.stroke();
     }
     ctx.globalAlpha = 1;
-    this.dust = this.dust.filter((d) => d.life > 0);
-    // ক্ষতি-পপ (আর্কেডের সংখ্যা-উড়ে-থাকা)
-    for (const q of this.pops) {
-      q.y += q.vy; q.vy += 0.045; q.life -= 1;
-      ctx.globalAlpha = Math.min(1, q.life / 16);
-      ctx.font = '700 19px "Noto Sans Bengali", "Hind Siliguri", system-ui, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillStyle = 'rgba(8,7,6,.85)'; ctx.fillText(q.txt, this.sn(q.x) + 2, this.sn(q.y) + 2);
-      ctx.fillStyle = q.col; ctx.fillText(q.txt, this.sn(q.x), this.sn(q.y));
+    ctx.fillStyle = 'rgba(255,244,210,.16)';
+    for (let i = 0; i < 46; i++) {
+      const gx = ((hash(i * 3 + 1) * (W + 120) - (sim.player.x * 0.08) % 60) + W + 120) % (W + 120) - 60;
+      const gy = GROUND + 6 + hash(i * 5 + 2) * (H - GROUND - 16);
+      ctx.fillRect(gx, gy, 2 + hash(i) * 4, 1.6);
     }
-    ctx.textAlign = 'left'; ctx.globalAlpha = 1;
-    this.pops = this.pops.filter((q) => q.life > 0);
-    // একসাথে কটি প্রতিপক্ষ ধরা-পড়ে → কম্বো-গণনা (সিম-এ নতুন ফিল্ড লাগেনি)
-    const cn = sim.enemies.filter((e) => e.phase === 'hitstun' || e.phase === 'blockstun').length;
-    if (cn > 1) {
-      ctx.font = '700 22px "Noto Sans Bengali", "Hind Siliguri", system-ui, sans-serif'; ctx.textAlign = 'right';
-      ctx.fillStyle = 'rgba(8,7,6,.8)'; ctx.fillText(`×${bnNum(cn)}`, W - 26, 60);
-      ctx.fillStyle = P.accent === '#2c6f6a' ? '#ffe9a8' : '#fff2cf'; ctx.fillText(`×${bnNum(cn)}`, W - 28, 58);
-      ctx.textAlign = 'left';
-    }
-    // আর্কেড ঘোষণা: 'লড়াই!' / 'কো!'
-    if (this.say) {
-      this.say.life -= 1;
-      const k = Math.min(1, (96 - this.say.life) / 8), fade = Math.min(1, this.say.life / 18);
-      ctx.save();
-      ctx.globalAlpha = fade; ctx.textAlign = 'center';
-      const sc = 0.9 + k * 0.1, cy = 128;
-      ctx.translate(W / 2, cy); ctx.scale(sc, sc);
-      ctx.font = '700 62px "Noto Sans Bengali", "Hind Siliguri", system-ui, sans-serif';
-      ctx.lineWidth = 8; ctx.strokeStyle = 'rgba(10,8,6,.9)'; ctx.strokeText(this.say.text, 0, 0);
-      ctx.fillStyle = '#fdf3d8'; ctx.fillText(this.say.text, 0, 0);
-      if (this.say.sub) {
-        ctx.font = '400 21px "Noto Sans Bengali", "Hind Siliguri", system-ui, sans-serif';
-        ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(10,8,6,.9)'; ctx.strokeText(this.say.sub, 0, 32);
-        ctx.fillStyle = '#f0e6cf'; ctx.fillText(this.say.sub, 0, 32);
-      }
-      ctx.restore(); ctx.textAlign = 'left';
-      if (this.say.life <= 0) this.say = null;
-    }
-    this.foreground(sim, P, tick);
-    if (this.white > 0) { ctx.fillStyle = `rgba(255,250,235,${0.09 * this.white})`; ctx.fillRect(0, 0, W, H); this.white -= 1; }
-    if (this.pixel) this.scanlines();
-    for (const fl of this.flash) {
-      fl.life -= 1;
-      const k = Math.max(0, fl.life / 9);
-      ctx.strokeStyle = `rgba(255,240,205,${0.1 + k * 0.8})`;
-      ctx.lineWidth = 2 + k * 3;
-      ctx.beginPath(); ctx.arc(fl.x, fl.y, 12 + (1 - k) * 26, 0, 6.283); ctx.stroke();
-    }
-    this.flash = this.flash.filter((f) => f.life > 0);
-    ctx.restore();
+    void tick;
   }
 
-  /**
-   * অধ্যায়ভিত্তিক আকাশরেখা — স্থাপত্যের *রূপ*, কোনো তারিখ-দাবি নয়।
-   *
-   * বাংলার দুটো নিজস্ব রেখা এখানেই বসানো: (ক) ঠাং/ছাউনির ছাদ থেকে নামা **বক্র
-   * কর্নিশ** (দো-ছলা), যা সুলতানি ইটের মসজিদেও ঢুকে গেছে — তাই এখানে গোল ছাদ নয়,
-   * বাঁকানো ছাদ; (খ) **কীলকমে** (নোকচওয়ালা মেहरাব-খিলান), দেশি ইটের দেয়ালের ছন্দ।
-   * ঢাল-ছাদ/কীলকমে/ছোট-গম্বুজের সারি — পান্ডুয়া-গৌড়-সোনারগাঁও-বাগেরহাটের ছায়ায়
-   * যা বারবার দেখা যায়, সেটাই রেকর্ড-অনুগত রূপ; ভেতরের কারুকার্য (টেরাকোটা প্যানেল)
-   * রেখার পুরুত্বের তারতম্য দিয়েই বোঝানো, ছবি আঁকা নয়।
-   */
-  /**
-   * আকাশ+মাটি একবারই পিক্সেল-ধরে ধরে বানানো হয় (ImageData), তারপর প্রতি ফ্রেমে
-   * putImageData। ফল: স্তর-বাঁধা (quantized) আকাশ, বায়ার দিদার, পোড়া-রোদের দাগ,
-   * গায়ে-পোড়া মাটির দানা — মানে 'সব সমতল' অভিযোগের সরাসরি জবাব, আর খরচ এক কল।
-   * ব্রাউজার/স্টাব DOM-এ createImageData না চললে ফিরে যায় গ্রেডিয়েন্টে (ক্র্যাশ নয়)।
-   */
-  private paintGround(P: Palette): boolean {
+  private water(P: Palette, tick: number): void {
     const { ctx } = this;
-    const bw = this.canvas.width, bh = this.canvas.height;
-    if (!this.pixel || bw < 8 || bh < 8) return false;
-    const key = `${P.sky}${P.ground}${P.ink}${P.accent}${bw}x${bh}${this.opts.colorblind}`;
-    if (!this.tex || this.tex.key !== key) {
-      let img: ImageData | undefined;
-      try { img = ctx.createImageData(bw, bh); } catch { img = undefined; }
-      if (!img || !(img.data instanceof Uint8ClampedArray)) return false;
-      const d = img.data;
-      const sky = hex(P.sky), gnd = hex(P.ground), ink = hex(P.ink), acc = hex(P.accent);
-      const horizon = Math.round((GROUND / H) * bh);
-      const STEPS = 7;
-      for (let y = 0; y < bh; y++) {
-        const t = y / bh;
-        for (let x = 0; x < bw; x++) {
-          let c: [number, number, number];
-          if (y < horizon) {
-            // আকাশ: উপরে গাঢ়, ক্ষিতিজে ফ্যাকাসে — ধাপে ধাপে, দিদারে গাথা
-            const up = 1 - y / Math.max(1, horizon);
-            const lvl = Math.min(STEPS - 1, Math.floor(up * STEPS));
-            const f = up * STEPS - lvl;
-            const pick = f > bayer(x, y, 1) ? Math.min(STEPS - 1, lvl + 1) : lvl;
-            const k = pick / (STEPS - 1);
-            c = [
-              sky[0] + (ink[0] - sky[0]) * (1 - k) * 0.55,
-              sky[1] + (ink[1] - sky[1]) * (1 - k) * 0.55,
-              sky[2] + (ink[2] - sky[2]) * (1 - k) * 0.55,
-            ];
-            // ক্ষিতিজের কাছে রোদের উজ্জ্বল পটি
-            if (y > horizon - 9) {
-              const w = (y - (horizon - 9)) / 9;
-              c = [c[0] + acc[0] * 0.16 * w, c[1] + acc[1] * 0.16 * w, c[2] + acc[2] * 0.12 * w];
-            }
-            // রোদের থালা (উঁচু-ডানে) + আলোর দানা
-            const dx = x - bw * 0.78, dy = y - bh * 0.16;
-            const rr = dx * dx + dy * dy * 1.5;
-            if (rr < 150) c = [Math.min(255, c[0] + 74), Math.min(255, c[1] + 66), Math.min(255, c[2] + 40)];
-            else if (rr < 380 && bayer(x, y, 1) > 0.5) c = [c[0] + 26, c[1] + 24, c[2] + 14];
-          } else {
-            // মাটি: উপরে উজ্জ্বল, নিচে কালো — দানা-দিদার আর চাকা-রেখা
-            const k = Math.min(1, (y - horizon) / Math.max(1, bh - horizon));
-            const base: [number, number, number] = [
-              gnd[0] + (ink[0] - gnd[0]) * k,
-              gnd[1] + (ink[1] - gnd[1]) * k,
-              gnd[2] + (ink[2] - gnd[2]) * k,
-            ];
-            const n = bayer(x, y, 1);
-            const speck = ((x * 7 + y * 13) % 29) < 3 ? 16 : 0;
-            c = [base[0] + (n > 0.72 ? 12 : n < 0.2 ? -14 : 0) + speck,
-                 base[1] + (n > 0.72 ? 11 : n < 0.2 ? -15 : 0) + speck * 0.8,
-                 base[2] + (n > 0.72 ? 9 : n < 0.2 ? -13 : 0) + speck * 0.6];
-            if (y === horizon) { c = [sky[0] * 0.72 + acc[0] * 0.1, sky[1] * 0.72 + acc[1] * 0.1, sky[2] * 0.7]; }
-          }
-          const i = (y * bw + x) << 2;
-          d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2]; d[i + 3] = 255;
-        }
+    ctx.fillStyle = 'rgba(150,220,240,.15)';
+    ctx.fillRect(-40, GROUND + 30, W + 120, 30);
+    ctx.strokeStyle = 'rgba(220,245,255,.4)'; ctx.lineWidth = 1.4;
+    for (let r = 0; r < 3; r++) {
+      ctx.beginPath();
+      for (let x = -20; x <= W + 40; x += 16) {
+        const y = GROUND + 38 + r * 8 + Math.sin((x + tick * (this.opts.reduceMotion ? 0 : 1.2)) / 22 + r * 2) * 1.8;
+        if (x === -20) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
-      this.tex = { key, img };
+      ctx.stroke();
     }
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.putImageData(this.tex.img, 0, 0);
-    ctx.restore();
-    return true;
+    ctx.fillStyle = mix(P.accent, '#ffffff', 0.3);
   }
 
-  /** সামনের তলা: নদীপাড়ের ঘাস/বাশের ডগা — খেলোয়ারটা মাঝের তলায় বসে, এই এক লাইনে
-   *  পর্দায় গভীরতা দেখায় (আগে সব কিছু একই তলায়, সমতল লাগত)। */
-  private foreground(sim: Sim, P: Palette, tick: number): void {
-    const { ctx } = this;
-    const drift = (sim.player.x * 0.16 + tick * 0.02) % 96;
-    ctx.save();
-    ctx.fillStyle = mix(P.ink, '#000000', 0.45);
-    ctx.beginPath(); ctx.rect(0, GROUND + 34, W, H); ctx.clip();
-    for (let i = -1; i < 9; i++) {
-      const x = i * 96 - drift;
-      for (let k = 0; k < 3; k++) {
-        const bx = x + k * 13, hh = 16 + ((i * 7 + k * 5) % 4) * 7;
-        ctx.beginPath(); ctx.moveTo(bx, H);
-        ctx.quadraticCurveTo(bx + 3, H - hh * 0.6, bx + 8 + k, H - hh);
-        ctx.lineTo(bx + 5, H); ctx.closePath(); ctx.fill();
-      }
-    }
-    ctx.restore();
-  }
-
-  /** CRT-ছায়া: পিক্সেল-লাইনের ফাঁকে কালো পটি — আর্কেড ক্যাবিনেটের ভাব। */
-  private scanlines(): void {
-    const { ctx } = this;
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = 'rgba(6,5,4,.19)';
-    for (let y = 1; y < this.canvas.height; y += 2) ctx.fillRect(0, y, this.canvas.width, 1);
-    ctx.fillStyle = 'rgba(6,5,4,.22)';
-    ctx.fillRect(0, 0, this.canvas.width, 2); ctx.fillRect(0, this.canvas.height - 2, this.canvas.width, 2);
-    ctx.restore();
-  }
-
-  private backdrop(sim: Sim, P: Palette, tick: number, depth = 1, alpha = 1): void {
+  private backdrop(sim: Sim, P: Palette, tick: number, depth: number, color: string): void {
     const { ctx } = this;
     const id = sim.ch.id;
-    // প্যারালাক্স: দূরের সারি খেলোয়াড়ের চলার সঙ্গে ধীরে সরে, কাছে-েরটা বেশি
-    const drift = (tick * 0.06 * depth + sim.player.x * 0.05 * depth) % 108;
-    if (alpha !== 1) ctx.globalAlpha = alpha;
-    if (depth < 1) { ctx.translate(0, 18 * (1 - depth)); ctx.scale(1, 0.86); }
-    ctx.fillStyle = 'rgba(0,0,0,.16)';
-    for (let i = 0; i < 7; i++) {
+    const drift = (tick * 0.05 * depth * (this.opts.reduceMotion ? 0 : 1) + sim.player.x * 0.05 * depth) % 108;
+    if (depth < 1) { ctx.translate(0, 20 * (1 - depth)); ctx.scale(1, 0.85); }
+    ctx.fillStyle = color;
+    for (let i = -1; i < 8; i++) {
       const x = 40 + i * 108 - drift;
       switch (true) {
-        case id === 0: this.chala(ctx, x, 240, 74, 44); break;                 // বন্দর-পল্লী: ছাউনির ছায়া
-        case id <= 2: this.arch(ctx, x + 12, 240, 50, 92); this.bar(ctx, x, 236, 78, 6); break;  // পুরনো দেওয়াল + কীলকমে
-        case id === 3: this.domeRow(ctx, x, 214, 3, 20, 62); break;             // সোনারগাঁও: ছোট-গম্বুজের সারি
-        case id === 4: this.domeRow(ctx, x - 6, 206, 5, 15, 92); this.bands(ctx, x - 6, 250, 92, 3); break; // পান্ডুয়া-গৌড়: ইট ও ঢাল-কর্নিশ
-        case id === 5: this.battlement(ctx, x, 196, 86, 46); this.arch(ctx, x + 20, 242, 40, 46); break;     // দুর্গ-প্রান্তর
-        case id === 6: this.battlement(ctx, x + 4, 202, 70, 40); break;         // ভূঁইয়ার গড়
-        case id === 7: this.dome(ctx, x + 30, 208, 26); this.bar(ctx, x + 4, 176, 7, 74); this.battlement(ctx, x + 44, 214, 40, 28); break; // ঢাকা: গম্বুজ-মিনার-প্রাচীর
-        default: this.tree(ctx, x + 22, 236, 52); this.tree(ctx, x + 76, 238, 34); break;                    // আম্রকানন: আমগাছের সারি
+        case id === 0: this.chala(ctx, x, 244, 78, 48); break;
+        case id <= 2: this.arch(ctx, x + 12, 244, 52, 96); this.bar(ctx, x, 238, 80, 7); break;
+        case id === 3: this.domeRow(ctx, x, 218, 3, 20, 64); break;
+        case id === 4: this.domeRow(ctx, x - 6, 210, 5, 15, 94); this.bands(ctx, x - 6, 252, 94, 3); break;
+        case id === 5: this.battlement(ctx, x, 200, 88, 48, tick); this.arch(ctx, x + 20, 246, 42, 48); break;
+        case id === 6: this.battlement(ctx, x + 4, 206, 72, 42, tick); break;
+        case id === 7: this.dome(ctx, x + 30, 212, 27); this.bar(ctx, x + 4, 178, 8, 76); this.battlement(ctx, x + 44, 218, 42, 30, tick); break;
+        default: this.tree(ctx, x + 22, 240, 56); this.tree(ctx, x + 76, 242, 36); break;
+      }
+      // কাছের স্তরে আলো-জানালা: নগর জীবন্ত লাগে
+      if (depth === 1 && id >= 2 && id <= 7) {
+        ctx.save(); ctx.fillStyle = 'rgba(255,196,96,.75)';
+        for (let w = 0; w < 3; w++) {
+          if (hash(i * 31 + w * 7) > 0.45) ctx.fillRect(x + 12 + hash(i * 13 + w) * 58, 222 + w * 9, 3.4, 4.6);
+        }
+        ctx.restore(); ctx.fillStyle = color;
       }
     }
-    if (id === 0 || id >= 6) {
-      ctx.fillStyle = 'rgba(180,220,235,.16)';
-      ctx.fillRect(0, GROUND + 26, W, 26);
-    }
   }
-  /** কীলকমে: দুই বাঁকা বাহু উঠে গিয়ে নোক — বাংলার ইটের দেওয়ালের নিজস্ব খিলান। */
   private arch(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
-    ctx.beginPath();
-    ctx.moveTo(x, y); ctx.lineTo(x, y - h * 0.55);
-    ctx.quadraticCurveTo(x + w * 0.06, y - h, x + w / 2, y - h - h * 0.1);
-    ctx.quadraticCurveTo(x + w * 0.94, y - h, x + w, y - h * 0.55);
-    ctx.lineTo(x + w, y); ctx.closePath(); ctx.fill();
+    const path = (inset: number): void => {
+      const ix = x + inset, iw = w - inset * 2, ih = h - inset;
+      ctx.beginPath();
+      ctx.moveTo(ix, y); ctx.lineTo(ix, y - ih * 0.55);
+      ctx.quadraticCurveTo(ix + iw * 0.06, y - ih, ix + iw / 2, y - ih - ih * 0.1);
+      ctx.quadraticCurveTo(ix + iw * 0.94, y - ih, ix + iw, y - ih * 0.55);
+      ctx.lineTo(ix + iw, y); ctx.closePath();
+    };
+    path(0); ctx.fill();
+    ctx.save();
+    ctx.fillStyle = 'rgba(255,226,170,.16)';   // ভেতরের অবতল খিলান — দেওয়ালে গভীরতা
+    path(9); ctx.fill();
+    ctx.fillStyle = 'rgba(0,0,0,.18)';
+    path(15); ctx.fill();
+    ctx.restore();
   }
-  /** দো-ছলা: দুই পাশে ঢাল-ছাদ, মাঝে নוקচওয়ালা শিখর — ছাউনির ঘর আর মন্দির দুটোরই রেখা। */
   private chala(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
     ctx.beginPath();
     ctx.moveTo(x, y);
@@ -421,204 +414,510 @@ export class Renderer {
     ctx.lineTo(x + w * 0.86, y - h * 0.16); ctx.lineTo(x + w * 0.14, y - h * 0.16);
     ctx.closePath(); ctx.fill();
   }
-  /** ছোট গম্বুজের সারি + কোণের টাওয়েট (বাগেরহাট-পান্ডুয়া ছায়া)। */
   private domeRow(ctx: CanvasRenderingContext2D, x: number, y: number, n: number, r: number, w: number): void {
-    ctx.fillRect(x, y, w, 42);
+    ctx.fillRect(x, y, w, 44);
     const step = w / (n + 1);
     for (let i = 0; i < n; i++) this.dome(ctx, x + step * (i + 1), y, r);
-    ctx.fillRect(x - 5, y - 14, 6, 56); ctx.fillRect(x + w - 1, y - 14, 6, 56);
+    ctx.fillRect(x - 5, y - 15, 7, 59); ctx.fillRect(x + w - 2, y - 15, 7, 59);
   }
   private dome(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): void {
     ctx.beginPath();
     ctx.moveTo(x - r, y);
-    ctx.quadraticCurveTo(x - r, y - r * 1.15, x, y - r * 1.45);   // গোল নয় — একটু নোকচা ছাদ
+    ctx.quadraticCurveTo(x - r, y - r * 1.15, x, y - r * 1.45);
     ctx.quadraticCurveTo(x + r, y - r * 1.15, x + r, y);
     ctx.closePath(); ctx.fill();
-    ctx.fillRect(x - 1, y - r * 1.45 - 5, 2, 5);                  // শিখর-ডাটা
+    ctx.fillRect(x - 1.2, y - r * 1.45 - 6, 2.4, 6);
   }
-  private battlement(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+  private battlement(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, tick = 0): void {
     ctx.fillRect(x, y, w, h);
-    for (let i = 0; i < 5; i++) ctx.fillRect(x + i * (w / 5), y - 8, w / 10, 8);
+    for (let i = 0; i < 5; i++) ctx.fillRect(x + i * (w / 5), y - 9, w / 10, 9);
+    // বাতাসে দুলতে থাকা নিশানা
+    const fx = x + w / 2;
+    ctx.fillRect(fx - 1, y - 30, 2, 22);
+    const wave = this.opts.reduceMotion ? 0 : Math.sin((tick + x) / 7) * 3;
+    ctx.beginPath(); ctx.moveTo(fx + 1, y - 30); ctx.lineTo(fx + 17, y - 25 + wave); ctx.lineTo(fx + 1, y - 20); ctx.closePath(); ctx.fill();
   }
-  /** দেওয়ালের টুকরো: স্তম্াব-বেধ/কর্নিশের মতো সরু ভরপেল। */
-  private bar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
-    ctx.fillRect(x, y, w, h);
-  }
-  /** ইটের দেওয়ালে টেরাকোটার প্যানেল-ছন্দ: পুরু রেখা নয়, ফাঁক-রেখাই যথেষ্ট। */
+  private bar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void { ctx.fillRect(x, y, w, h); }
   private bands(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, n: number): void {
     ctx.save(); ctx.globalAlpha = 0.5; ctx.fillStyle = 'rgba(255,235,200,.5)';
     for (let i = 0; i < n; i++) ctx.fillRect(x + 3, y + 4 + i * 7, w - 6, 2);
     ctx.restore();
   }
-  /** আমগাছের ছায়া: মোটা ঠার + তিন-চৌকা গুচ্ছছায়া — পলাশীর আম্রকাননের চেনা রেখা। */
   private tree(ctx: CanvasRenderingContext2D, x: number, y: number, h: number): void {
     ctx.save();
-    ctx.strokeStyle = ctx.fillStyle as unknown as string; ctx.lineWidth = Math.max(4, h * 0.16);
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x, y - h * 0.42); ctx.stroke();
-    const r = h * 0.5;
-    ctx.beginPath(); ctx.moveTo(x - r * 1.5, y - h * 0.34);
-    for (let i = 0; i <= 4; i++) {
-      const px = x - r * 1.5 + (i / 4) * r * 3;
-      ctx.quadraticCurveTo(px + r * 0.375, y - h * 0.34 - r * (i % 2 ? 1.15 : 1.55), px + r * 0.75, y - h * 0.34);
-    }
-    ctx.closePath(); ctx.fill();
-    ctx.restore();
-  }
-  /** খেজুর/বাশের পালক — নদীপাড়ার অধ্যায়ে (০, ৬) মাটির ধারে। */
-  private reed(ctx: CanvasRenderingContext2D, x: number, y: number, h: number): void {
-    ctx.save(); ctx.lineWidth = 2;
-    for (let i = 0; i < 4; i++) {
-      const a = -1.35 + i * 0.28;
-      ctx.beginPath(); ctx.moveTo(x, y);
-      ctx.quadraticCurveTo(x + Math.cos(a) * h * 0.4, y - h * 0.7, x + Math.cos(a) * h * 0.8, y - h);
-      ctx.stroke();
+    const col = ctx.fillStyle as unknown as string;
+    ctx.strokeStyle = col; ctx.lineCap = 'round';
+    ctx.lineWidth = Math.max(5, h * 0.14);
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 2, y - h * 0.3, x, y - h * 0.52); ctx.stroke();
+    ctx.lineWidth = Math.max(3, h * 0.07);
+    ctx.beginPath(); ctx.moveTo(x, y - h * 0.42); ctx.lineTo(x - h * 0.3, y - h * 0.66); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x, y - h * 0.46); ctx.lineTo(x + h * 0.32, y - h * 0.7); ctx.stroke();
+    ctx.fillStyle = col;
+    const cy = y - h * 0.72;
+    for (const [ox, oy, rx, ry] of [[0, 0, 0.52, 0.34], [-0.34, 0.1, 0.4, 0.27], [0.36, 0.08, 0.42, 0.28], [0.02, -0.22, 0.4, 0.26], [-0.16, 0.2, 0.44, 0.22]] as const) {
+      ctx.beginPath(); ctx.ellipse(x + ox * h, cy + oy * h, rx * h, ry * h, 0, 0, 6.283); ctx.fill();
     }
     ctx.restore();
   }
 
-  private boat(ctx: CanvasRenderingContext2D, x: number, y: number, o: { hp: number; maxHp: number }, P: Palette): void {
+  // ─── লক্ষ্য ও পিকআপ ────────────────────────────────────────────────────────
+  private objectiveDraw(sim: Sim, P: Palette, tick: number): void {
+    const { ctx } = this;
+    const o = sim.objective!;
+    if (this.lastObjHp >= 0 && o.hp < this.lastObjHp) this.objFlash = 10;
+    this.lastObjHp = o.hp;
+    if (this.objFlash > 0) this.objFlash -= 1;
+    const x = o.x, y = GROUND + o.y * 0.5 + 8;
     const hurt = 1 - o.hp / o.maxHp;
-    ctx.save(); ctx.translate(x, y + 6);
-    ctx.fillStyle = P.ink; ctx.globalAlpha = 0.8;
-    ctx.beginPath(); ctx.moveTo(-44, 0); ctx.quadraticCurveTo(-30, 20, 0, 20);
-    ctx.quadraticCurveTo(34, 20, 48, 0); ctx.quadraticCurveTo(6, 10, -44, 0); ctx.fill();
-    ctx.strokeStyle = P.ink; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(0, 4); ctx.lineTo(0, -40); ctx.stroke();
-    ctx.globalAlpha = 0.7 + hurt * 0.2;
-    ctx.fillStyle = hurt > 0.5 ? '#7a5a3a' : P.accent;
-    ctx.beginPath(); ctx.moveTo(2, -40); ctx.lineTo(30, -22); ctx.lineTo(2, -8); ctx.closePath(); ctx.fill();
+    ctx.save(); ctx.translate(x, y); ctx.scale(1.28, 1.28);
+    if (this.objFlash > 0 && !this.opts.reduceMotion) ctx.translate((Math.random() - 0.5) * 3, 0);
+    ctx.fillStyle = 'rgba(0,0,0,.3)';
+    ctx.beginPath(); ctx.ellipse(0, 14, 52, 8, 0, 0, 6.283); ctx.fill();
+    const ink = this.objFlash > 5 ? '#fff0d8' : P.ink;
+    if (o.kind === 'boat') {
+      ctx.fillStyle = ink;
+      ctx.beginPath(); ctx.moveTo(-52, 0); ctx.quadraticCurveTo(-34, 22, 0, 22);
+      ctx.quadraticCurveTo(38, 22, 56, -2); ctx.quadraticCurveTo(8, 11, -52, 0); ctx.fill();
+      ctx.strokeStyle = ink; ctx.lineWidth = 3.4;
+      ctx.beginPath(); ctx.moveTo(0, 5); ctx.lineTo(0, -46); ctx.stroke();
+      const flutter = this.opts.reduceMotion ? 0 : Math.sin(tick / 8) * 3;
+      ctx.fillStyle = hurt > 0.5 ? '#a4673a' : P.accent;
+      ctx.beginPath(); ctx.moveTo(2, -46); ctx.quadraticCurveTo(26 + flutter, -34, 32 + flutter, -24); ctx.lineTo(2, -9); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#ffd777';
+      ctx.beginPath(); ctx.arc(-30, -6, 3, 0, 6.283); ctx.fill();   // লণ্ঠন
+    } else if (o.kind === 'grain') {
+      ctx.fillStyle = ink;
+      ctx.fillRect(-44, -16, 88, 18);
+      ctx.beginPath(); ctx.arc(-28, 8, 11, 0, 6.283); ctx.arc(28, 8, 11, 0, 6.283); ctx.fill();
+      ctx.fillStyle = mix(P.accent, '#ffffff', 0.15);
+      for (const [sx, sy] of [[-24, -24], [0, -28], [24, -24], [-10, -36], [12, -36]] as const) {
+        ctx.beginPath(); ctx.ellipse(sx, sy, 13, 8, -0.15, 0, 6.283); ctx.fill();
+      }
+      ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(-28, 8, 6, 0, 6.283); ctx.arc(28, 8, 6, 0, 6.283); ctx.stroke();
+    } else {
+      ctx.fillStyle = ink;
+      ctx.fillRect(-46, -44, 10, 58); ctx.fillRect(36, -44, 10, 58);
+      this.chala(ctx, -56, -40, 112, 34);
+      ctx.fillStyle = P.accent;
+      const sway = this.opts.reduceMotion ? 0 : Math.sin(tick / 9) * 2.4;
+      ctx.beginPath(); ctx.moveTo(-14, -40); ctx.lineTo(14, -40); ctx.lineTo(10 + sway, -18); ctx.lineTo(-10 + sway, -18); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#ffd777';
+      ctx.beginPath(); ctx.arc(0, -29, 3.4, 0, 6.283); ctx.fill();
+    }
     ctx.restore();
-    ctx.globalAlpha = 1;
+    // লক্ষ্যের অবস্থা-পটি
+    const bw = 68;
+    ctx.fillStyle = 'rgba(8,7,6,.72)'; ctx.fillRect(x - bw / 2, y - 86, bw, 8);
+    ctx.fillStyle = hurt > 0.62 ? '#e05a45' : hurt > 0.32 ? '#e8a83e' : '#79c25f';
+    ctx.fillRect(x - bw / 2 + 1.5, y - 84.5, (bw - 3) * Math.max(0, o.hp / o.maxHp), 5);
+    ctx.font = '700 11px "Noto Sans Bengali", system-ui, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(255,246,224,.95)';
+    ctx.fillText(o.name_bn, x, y - 92);
+    ctx.textAlign = 'left';
   }
 
-  private puppet(ctx: CanvasRenderingContext2D, f: Fighter, tick: number, P: Palette, role: 'hero' | 'foe' | 'ally' = 'foe'): void {
+  private pickupDraw(x: number, y: number, life: number, seed: number, P: Palette, tick: number): void {
+    const { ctx } = this;
+    const bob = this.opts.reduceMotion ? 0 : Math.sin((tick + seed) / 11) * 4;
+    const fade = life < 120 ? 0.45 + 0.55 * Math.abs(Math.sin(tick / 6)) : 1;
+    ctx.save(); ctx.globalAlpha = fade;
+    // আলোর স্তম্ভ — মাঠের যেকোনো জায়গা থেকে চোখে পড়ে
+    ctx.fillStyle = this.linear(y - 96, y, [[0, 'rgba(255,214,110,0)'], [1, 'rgba(255,214,110,.28)']]);
+    ctx.fillRect(x - 9, y - 96 + bob * 0.4, 18, 96);
+    ctx.fillStyle = 'rgba(255,220,130,.3)';
+    ctx.beginPath(); ctx.ellipse(x, y + 6, 20 + Math.sin(tick / 9) * 3, 5.4, 0, 0, 6.283); ctx.fill();
+    ctx.translate(x, y - 26 + bob);
+    ctx.rotate(this.opts.reduceMotion ? 0.2 : Math.sin((tick + seed) / 16) * 0.18);
+    ctx.fillStyle = this.radial(0, 0, 30, 'rgba(255,226,150,.9)', 'rgba(255,226,150,0)');
+    ctx.fillRect(-30, -30, 60, 60);
+    // স্ক্রল: সোনালি চোখা কাগজ + সীল
+    ctx.fillStyle = '#f6df9e';
+    ctx.beginPath();
+    ctx.moveTo(-14, -9); ctx.lineTo(14, -9); ctx.lineTo(17, 0); ctx.lineTo(14, 9); ctx.lineTo(-14, 9); ctx.lineTo(-17, 0);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = '#9a7420'; ctx.lineWidth = 1.6; ctx.stroke();
+    ctx.strokeStyle = 'rgba(122,88,20,.75)'; ctx.lineWidth = 1.4;
+    for (const ly of [-4, 0, 4]) { ctx.beginPath(); ctx.moveTo(-9, ly); ctx.lineTo(9 - (ly === 0 ? 3 : 0), ly); ctx.stroke(); }
+    ctx.fillStyle = P.accent;
+    ctx.beginPath(); ctx.arc(8, 5, 3.6, 0, 6.283); ctx.fill();
+    ctx.restore();
+    ctx.font = '700 11px "Noto Sans Bengali", system-ui, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillStyle = 'rgba(8,7,6,.65)'; ctx.fillText('কার্ড!', x + 1, y - 57 + bob);
+    ctx.fillStyle = '#ffe9a8'; ctx.fillText('কার্ড!', x, y - 58 + bob);
+    ctx.textAlign = 'left';
+  }
+
+  // ─── এফেক্স স্তর ────────────────────────────────────────────────────────────
+  private fxLayer(sim: Sim, P: Palette, tick: number): void {
+    const { ctx } = this;
+    // ভাসা ধুলিকণা (ambient)
+    if (!this.opts.reduceMotion && tick % 16 === 0 && this.particles.length < 240) {
+      this.particles.push({
+        x: Math.random() * W, y: 60 + Math.random() * 200, vx: 0.24 + Math.random() * 0.3, vy: 0.08,
+        life: 190, max: 190, r: 1 + Math.random(), col: 'rgba(255,240,200,.7)', kind: 'mote', rot: 0,
+      });
+    }
+    for (const d of this.particles) {
+      d.x += d.vx; d.y += d.vy;
+      if (d.kind !== 'mote') d.vy += 0.15;
+      d.life -= 1;
+      ctx.globalAlpha = Math.max(0, Math.min(1, d.life / (d.kind === 'mote' ? 90 : 26)));
+      if (d.kind === 'spark') {
+        ctx.strokeStyle = d.col; ctx.lineWidth = 1.8;
+        ctx.beginPath(); ctx.moveTo(d.x, d.y); ctx.lineTo(d.x - d.vx * 2.6, d.y - d.vy * 2.6); ctx.stroke();
+      } else {
+        ctx.fillStyle = d.col;
+        ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, 6.283); ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+    this.particles = this.particles.filter((d) => d.life > 0 && d.x < W + 30);
+
+    for (const fl of this.flash) {
+      fl.life -= 1;
+      const k = Math.max(0, fl.life / 9);
+      ctx.strokeStyle = `rgba(255,240,205,${0.1 + k * 0.8})`;
+      ctx.lineWidth = 2 + k * 3;
+      ctx.beginPath(); ctx.arc(fl.x, fl.y, 12 + (1 - k) * 28, 0, 6.283); ctx.stroke();
+      ctx.save(); ctx.translate(fl.x, fl.y); ctx.rotate(0.7);
+      ctx.strokeStyle = `rgba(255,255,255,${k * 0.9})`; ctx.lineWidth = 2.4;
+      const r = 10 + (1 - k) * 16;
+      ctx.beginPath(); ctx.moveTo(-r, 0); ctx.lineTo(r, 0); ctx.moveTo(0, -r); ctx.lineTo(0, r); ctx.stroke();
+      ctx.restore();
+      void fl;
+    }
+    this.flash = this.flash.filter((f) => f.life > 0);
+
+    for (const q of this.pops) {
+      q.y += q.vy; q.vy += 0.045; q.life -= 1;
+      const age = q.max - q.life;
+      const popScale = age < 6 ? 0.6 + (age / 6) * 0.55 : 1.15 - Math.min(0.15, (age - 6) * 0.01);
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, q.life / 14);
+      ctx.translate(q.x, q.y); ctx.scale(popScale, popScale);
+      ctx.font = `700 ${q.big ? 27 : 19}px "Noto Sans Bengali", "Hind Siliguri", system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(8,7,6,.88)'; ctx.fillText(q.txt, 2, 2);
+      ctx.fillStyle = q.col; ctx.fillText(q.txt, 0, 0);
+      ctx.restore();
+    }
+    this.pops = this.pops.filter((q) => q.life > 0);
+
+    // টানা-আঘাত প্রদর্শনী (সিমেই হিসাব থাকে)
+    if (sim.combo >= 2) {
+      const heat = Math.min(1, sim.combo / 14);
+      const scale = 1 + heat * 0.35 + (this.opts.reduceMotion ? 0 : Math.sin(tick / 4) * 0.03 * heat);
+      ctx.save(); ctx.translate(W - 64, 64); ctx.scale(scale, scale); ctx.textAlign = 'center';
+      ctx.font = '800 30px "Noto Sans Bengali", system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(8,7,6,.85)'; ctx.fillText(`×${bnNum(sim.combo)}`, 2, 2);
+      ctx.fillStyle = heat > 0.6 ? '#ffb347' : '#fff2cf'; ctx.fillText(`×${bnNum(sim.combo)}`, 0, 0);
+      ctx.font = '700 12px "Noto Sans Bengali", system-ui, sans-serif';
+      ctx.fillStyle = 'rgba(255,242,207,.9)'; ctx.fillText('টানা আঘাত', 0, 17);
+      // কম্বো-ঘড়ি
+      ctx.fillStyle = 'rgba(8,7,6,.6)'; ctx.fillRect(-30, 23, 60, 4);
+      ctx.fillStyle = '#ffb347'; ctx.fillRect(-30, 23, 60 * Math.max(0, sim.comboTimer / 110), 4);
+      ctx.restore();
+    }
+    void P;
+  }
+
+  private announceLayer(P: Palette): void {
+    if (!this.say) return;
+    const { ctx } = this;
+    this.say.life -= 1;
+    const age = this.say.max - this.say.life;
+    const fade = Math.min(1, this.say.life / 18);
+    const t = Math.min(1, age / 11);
+    const back = 1 + 2.2 * Math.pow(t - 1, 3) + 1.2 * Math.pow(t - 1, 2);   // easeOutBack-ish
+    const barH = 26 * Math.min(1, age / 8) * fade;
+    ctx.fillStyle = 'rgba(6,5,4,.82)';
+    ctx.fillRect(0, 0, W, barH); ctx.fillRect(0, H - barH, W, barH);
+    ctx.save();
+    ctx.globalAlpha = fade; ctx.textAlign = 'center';
+    ctx.translate(W / 2, 132); ctx.scale(0.55 + back * 0.45, 0.55 + back * 0.45);
+    ctx.font = '800 64px "Noto Sans Bengali", "Hind Siliguri", system-ui, sans-serif';
+    ctx.lineWidth = 10; ctx.strokeStyle = 'rgba(10,8,6,.92)'; ctx.strokeText(this.say.text, 0, 0);
+    ctx.fillStyle = this.linear(-46, 8, [[0, '#fff7dc'], [0.55, '#ffd777'], [1, mix(P.accent, '#ffd777', 0.4)]]);
+    ctx.fillText(this.say.text, 0, 0);
+    if (this.say.sub) {
+      ctx.font = '600 20px "Noto Sans Bengali", "Hind Siliguri", system-ui, sans-serif';
+      ctx.lineWidth = 5; ctx.strokeStyle = 'rgba(10,8,6,.9)'; ctx.strokeText(this.say.sub, 0, 34);
+      ctx.fillStyle = '#f6ecd4'; ctx.fillText(this.say.sub, 0, 34);
+    }
+    ctx.restore(); ctx.textAlign = 'left';
+    if (this.say.life <= 0) this.say = null;
+  }
+
+  private foreground(sim: Sim, P: Palette, tick: number): void {
+    const { ctx } = this;
+    const drift = (sim.player.x * 0.18 + tick * 0.03 * (this.opts.reduceMotion ? 0 : 1)) % 96;
+    ctx.save();
+    ctx.fillStyle = this.linear(GROUND + 30, H, [[0, 'rgba(0,0,0,0)'], [1, 'rgba(4,3,2,.55)']]);
+    ctx.fillRect(0, GROUND + 30, W, H - GROUND);
+    ctx.fillStyle = mix(P.ink, '#000000', 0.4);
+    ctx.beginPath(); ctx.rect(0, GROUND + 34, W, H); ctx.clip();
+    for (let i = -1; i < 9; i++) {
+      const x = i * 96 - drift;
+      for (let k = 0; k < 3; k++) {
+        const bx = x + k * 13, hh = 18 + ((i * 7 + k * 5) % 4) * 8;
+        const sway = this.opts.reduceMotion ? 0 : Math.sin((tick + bx) / 13) * 2.4;
+        ctx.beginPath(); ctx.moveTo(bx, H);
+        ctx.quadraticCurveTo(bx + 3 + sway * 0.4, H - hh * 0.6, bx + 8 + k + sway, H - hh);
+        ctx.lineTo(bx + 5, H); ctx.closePath(); ctx.fill();
+      }
+    }
+    ctx.restore();
+  }
+
+  private scanlines(): void {
+    const { ctx } = this;
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = 'rgba(6,5,4,.17)';
+    for (let y = 1; y < this.canvas.height; y += 2) ctx.fillRect(0, y, this.canvas.width, 1);
+    ctx.fillStyle = 'rgba(6,5,4,.2)';
+    ctx.fillRect(0, 0, this.canvas.width, 2); ctx.fillRect(0, this.canvas.height - 2, this.canvas.width, 2);
+    ctx.restore();
+  }
+
+  // ─── পুতুল ──────────────────────────────────────────────────────────────────
+  private trackOf(f: Fighter): Track {
+    let t = this.tracks.get(f.uid);
+    if (!t) { t = { lx: f.x, ly: f.y, phase: 0, speed: 0, maxHp: f.hp, ghosts: [] }; this.tracks.set(f.uid, t); }
+    const dist = Math.abs(f.x - t.lx) + Math.abs(f.y - t.ly) * 0.6;
+    t.phase += dist * 0.5;
+    t.speed = t.speed * 0.6 + dist * 0.4;
+    t.lx = f.x; t.ly = f.y;
+    return t;
+  }
+
+  private puppet(ctx: CanvasRenderingContext2D, f: Fighter, tick: number, P: Palette, role: 'hero' | 'foe' | 'ally' = 'foe', sim?: Sim): void {
     const dir = f.facing === 1 ? 1 : -1;
     const depth = 1 + f.y / 420;
     const baseY = GROUND + f.y * 0.5;
-    const p = poseOf(f, tick);
-    const isHero = f === (null as unknown as Fighter) || f.tone === P.hero;
-    void isHero;
-    // শৈলী-নিয়ম (design §৭, খ): পুতুল = আলোর পর্দায় **কালো ছায়া**। আগে শরিলেই
-    // দলের রঙ বসত, ফলে সেটা 'ছায়া-পুতুল' নয়, ফ্যাকাসে কাঠি-মানুষ হয়ে যাচ্ছিল
-    // (হেরো-ফ্রেম কেটে দেখে ধরা পড়েছে)। এখন শরিল কালো, দলের চেনা-রঙ শুধু
-    // কিনারা-আলো — মোবাইলের ছোট পর্দায়ও বন্ধু/শত্রু আলাদা দেখায়।
-    const ink = '#141109';
-    const rim = this.opts.colorblind ? (f.tone === P.hero ? '#f5f1e4' : '#9fd6ff') : f.tone;
-    const shadowCol = 'rgba(0,0,0,.3)';
+    const tr = this.trackOf(f);
+    // আসল চলা সিমে x/y-বদলে ধরা পড়ে — হাঁটার চক্র সেই বদল থেকেই চলে
+    const moving = f.phase === 'idle' ? Math.min(1, tr.speed / 1.1) : 0;
+    const p = poseOf(f, tick, tr.phase, moving);
+    const ink = f.hurtAge < 5 ? '#f4ead2' : '#16110b';
+    const rimBase = this.opts.colorblind ? (role === 'hero' ? '#ffffff' : role === 'ally' ? '#7ef0c1' : '#9fd6ff') : f.tone;
+    const rim = f.telegraph > 0 ? '#ff5a3c' : rimBase;
+    const bossScale = f.kind === 'boss' ? 1.16 : f.kind === 'shield' ? 1.07 : 1;
+    const fade = f.phase === 'downed' ? Math.max(0, 1 - f.deadAge / 55) : 1;
+
+    // ড্যাশ-ভূতছায়া
+    if (f.phase === 'side' && tick % 3 === 0 && !this.opts.reduceMotion) tr.ghosts.push({ x: f.x, y: baseY, dir, life: 14 });
+    for (const g of tr.ghosts) {
+      g.life -= 1;
+      ctx.save(); ctx.globalAlpha = (g.life / 14) * 0.4;
+      ctx.translate(g.x, g.y); ctx.scale(g.dir, 1);
+      ctx.fillStyle = rimBase;
+      ctx.beginPath();
+      ctx.moveTo(-10, -72); ctx.lineTo(12, -70); ctx.lineTo(14, -30); ctx.lineTo(10, -4); ctx.lineTo(-8, -4); ctx.lineTo(-12, -32);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    tr.ghosts = tr.ghosts.filter((g) => g.life > 0);
+
     ctx.save();
+    ctx.globalAlpha = fade * (f.invulnerable && f.phase === 'side' ? 0.75 : 1);
     ctx.translate(f.x + p.lunge * dir, baseY);
-    ctx.scale(depth * dir, depth);
-    // ছায়া-মেঝে
-    ctx.fillStyle = shadowCol;
-    ctx.beginPath(); ctx.ellipse(0, 2, 26, 6, 0, 0, 6.283); ctx.fill();
-    if (f.invulnerable) ctx.globalAlpha = 0.72;
+    // মাটির ছায়া
+    ctx.fillStyle = 'rgba(0,0,0,.34)';
+    ctx.beginPath(); ctx.ellipse(0, 3, 36 * bossScale, 8, 0, 0, 6.283); ctx.fill();
+    ctx.scale(depth * dir * 1.34 * bossScale, depth * 1.34 * bossScale);
+    // সংকল্প-প্রস্তুত আভা (নায়ক)
+    if (role === 'hero' && f.meter >= 100) {
+      ctx.fillStyle = this.radial(0, -46, 52, 'rgba(255,214,110,.34)', 'rgba(255,214,110,0)');
+      ctx.fillRect(-52, -98, 104, 104);
+    }
     ctx.rotate(p.lean * 0.5);
-    const hipY = -34 + p.crouch;
-    const chestY = hipY - 26;
-    const headY = chestY - 16;
-    // উরু-পা
-    const legF = limb2(ctx, 0, hipY, 1.35 + p.legF, 20, 9, ink, rim);
-    limb2(ctx, at(legF, 0), at(legF, 1), 1.5 - p.legF * 0.4, 18, 8, ink, rim);
-    const legB = limb2(ctx, -2, hipY, 1.75 + p.legB, 20, 9, ink, rim);
-    limb2(ctx, at(legB, 0), at(legB, 1), 1.5 - p.legB * 0.4, 18, 8, ink, rim);
-    // আসল (প্যাচ/চাদর)
-    ctx.fillStyle = ink;
-    ctx.beginPath();
-    ctx.moveTo(-9, chestY + 4); ctx.lineTo(11, chestY + 4);
-    ctx.lineTo(9 + p.cloth * 8, hipY + 16); ctx.lineTo(-11 - p.cloth * 10, hipY + 14);
-    ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = rim; ctx.lineWidth = 1.6; ctx.stroke();
-    // বুক
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
+    const hipY = -42 + p.crouch;
+    const chestY = hipY - 30;
+    const headY = chestY - 17;
+
+    // বসের আঁচল (পেছনে ওড়া কাপড়)
+    if (f.kind === 'boss') {
+      ctx.fillStyle = mix(P.accent, '#000000', 0.25);
+      ctx.beginPath();
+      ctx.moveTo(-6, chestY);
+      ctx.quadraticCurveTo(-26 - p.cloth * 8, hipY + 4, -20 - p.cloth * 10, -2);
+      ctx.lineTo(-6, hipY + 6); ctx.closePath(); ctx.fill();
+    }
+    // পা (ভরা আকৃতি, মোজা-ধাঁচের মুখ)
+    const legB = seg2(ctx, -2, hipY, 1.72 + p.legB, 23, 13, ink, rim);
+    const footB = seg2(ctx, at(legB, 0), at(legB, 1), 1.5 - p.legB * 0.45, 20, 10.6, ink, rim);
+    seg(ctx, at(footB, 0), at(footB, 1), 0.15, 10, 7.4, 3.6, ink);
+    const legF = seg2(ctx, 1, hipY, 1.34 + p.legF, 23, 13.4, ink, rim);
+    const footF = seg2(ctx, at(legF, 0), at(legF, 1), 1.5 - p.legF * 0.45, 20, 10.8, ink, rim);
+    seg(ctx, at(footF, 0), at(footF, 1), 0.15, 10, 7.4, 3.6, ink);
+
+    // ধড়: কুর্তা-আকৃতি + কোমরবন্ধ + স্যাশ
     const bodyPath = (): void => {
       ctx.beginPath();
-      ctx.moveTo(p.lean * 6 - 9, chestY - 3); ctx.lineTo(p.lean * 6 + 9, chestY - 3);
-      ctx.lineTo(10, hipY - 2); ctx.lineTo(12, hipY + 13); ctx.lineTo(-11, hipY + 13); ctx.lineTo(-9, hipY - 2);
+      ctx.moveTo(p.lean * 6 - 14, chestY - 3); ctx.lineTo(p.lean * 6 + 14, chestY - 3);
+      ctx.lineTo(12, hipY - 2); ctx.lineTo(16 + p.cloth * 5, hipY + 16); ctx.lineTo(-16 - p.cloth * 7, hipY + 15); ctx.lineTo(-12, hipY - 2);
       ctx.closePath();
     };
-    ctx.lineWidth = 5; ctx.strokeStyle = rim; bodyPath(); ctx.stroke();
+    ctx.lineWidth = 4.6; ctx.lineJoin = 'round'; ctx.strokeStyle = rim; bodyPath(); ctx.stroke();
     ctx.fillStyle = ink; bodyPath(); ctx.fill();
-    // পিঠে-ওপরের আলো: একটি উজ্জ্বল রেখা + বুকে ছায়া-ঢাল — নিকষি কালোটা জমে ওঠে
-    ctx.strokeStyle = mix(ink, rim, 0.6); ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(p.lean * 6 - 6, chestY - 2); ctx.lineTo(p.lean * 6 + 6, chestY - 2); ctx.stroke();
-    ctx.fillStyle = mix(ink, '#000000', 0.55);
-    ctx.beginPath(); ctx.moveTo(p.lean * 6 + 3, chestY); ctx.lineTo(9, hipY - 2); ctx.lineTo(10, hipY + 9); ctx.lineTo(2, hipY + 9); ctx.closePath(); ctx.fill();
-    ctx.lineWidth = 16; ctx.strokeStyle = rim;
-    ctx.beginPath(); ctx.moveTo(0, hipY); ctx.lineTo(p.lean * 6, chestY); ctx.stroke();
-    ctx.lineWidth = 13; ctx.strokeStyle = ink;
-    ctx.beginPath(); ctx.moveTo(0, hipY); ctx.lineTo(p.lean * 6, chestY); ctx.stroke();
-    // পিছনের হাত + ঢাল
-    const sh: [number, number] = [p.lean * 6, chestY];
-    const back = limb2(ctx, at(sh, 0) - 3, at(sh, 1), Math.PI - 0.7 + p.armB, 15, 8, ink, rim);
-    if (f.guarding || f.move?.id === 'guard') {
-      ctx.fillStyle = P.accent;
-      ctx.beginPath(); ctx.ellipse(at(back, 0) - 2, at(back, 1) + 6, 11, 15, -0.3 + p.swordB * 0.2, 0, 6.283); ctx.fill();
-      ctx.strokeStyle = 'rgba(255,255,255,.25)'; ctx.lineWidth = 1.5; ctx.stroke();
+    // পেটের ছায়া-অর্ধেক ও কাঁধের আলো
+    ctx.fillStyle = 'rgba(0,0,0,.4)';
+    ctx.beginPath(); ctx.moveTo(p.lean * 6 + 2, chestY); ctx.lineTo(10, hipY - 2); ctx.lineTo(11, hipY + 11); ctx.lineTo(1, hipY + 11); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = mix(ink === '#16110b' ? '#16110b' : '#ffffff', rimBase, 0.65); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(p.lean * 6 - 8, chestY - 2); ctx.lineTo(p.lean * 6 + 8, chestY - 2); ctx.stroke();
+    // স্যাশ ও কোমরবন্ধ: দল-চেনার প্রধান রঙ
+    ctx.strokeStyle = role === 'hero' ? '#e8b93e' : P.accent; ctx.lineWidth = 4.4; ctx.lineCap = 'round';
+    ctx.beginPath(); ctx.moveTo(p.lean * 6 - 9, chestY + 3); ctx.lineTo(8, hipY + 2); ctx.stroke();
+    ctx.fillStyle = mix(P.accent, '#000000', 0.12);
+    ctx.fillRect(-13, hipY + 3, 27, 5);
+
+    const sh: [number, number] = [p.lean * 6, chestY + 1];
+    // পেছনের হাত + ঢাল
+    const back = seg2(ctx, at(sh, 0) - 3, at(sh, 1), Math.PI - 0.7 + p.armB, 17, 10.8, ink, rim);
+    const showShield = f.guarding || f.move?.id === 'guard' || f.kind === 'shield' || f.kind === 'boss';
+    if (showShield) {
+      const sx = f.kind === 'shield' || f.kind === 'boss' ? 8 : at(back, 0) - 2;
+      const sy = f.kind === 'shield' || f.kind === 'boss' ? chestY + 14 : at(back, 1) + 7;
+      const r = f.kind === 'shield' ? 17 : f.kind === 'boss' ? 15 : 12.5;
+      ctx.fillStyle = mix(P.accent, '#000000', 0.08);
+      ctx.beginPath(); ctx.arc(sx, sy, r, 0, 6.283); ctx.fill();
+      ctx.strokeStyle = mix(P.accent, '#ffffff', 0.5); ctx.lineWidth = 2; ctx.stroke();
+      ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 1.4;
+      ctx.beginPath(); ctx.arc(sx, sy, r * 0.66, 0, 6.283); ctx.stroke();
+      ctx.fillStyle = '#ffe1a0';
+      ctx.beginPath(); ctx.arc(sx, sy, 3.2, 0, 6.283); ctx.fill();
+      if (f.guard < 34 && f.kind !== 'hero') {   // ফাটল: ঢাল ভাঙার কাছাকাছি
+        ctx.strokeStyle = 'rgba(10,8,6,.8)'; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(sx - 4, sy - r + 3); ctx.lineTo(sx + 1, sy - 2); ctx.lineTo(sx - 3, sy + 6); ctx.stroke();
+      }
     }
-    // সামনের হাত + খড়্গ
-    const front = limb2(ctx, at(sh, 0) + 3, at(sh, 1), -0.5 + p.armF, 16, 8, ink, rim);
-    const bladeAng = p.sword;
-    ctx.strokeStyle = this.opts.colorblind ? '#ffffff' : '#f3ead2';
-    ctx.lineWidth = 3.2;
-    const steel = this.opts.colorblind ? '#ffffff' : '#f3ead2';
-    const bl = limb(ctx, at(front, 0), at(front, 1), bladeAng, 34, 3.2, steel);
-    // বাঁকালো ধার = তলোয়ার (কাটা/কোপ/সংকল্প); সোজা ধার = রূপা/ধপ (পোঁতা, রোধ)।
-    const curved = f.move === null || (f.move.id !== 'thrust' && f.move.id !== 'guard');
-    const nx = Math.cos(bladeAng + Math.PI / 2), ny = Math.sin(bladeAng + Math.PI / 2);
-    ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = 1;
-    const mx = (at(front, 0) + at(bl, 0)) / 2 + nx * 7, my = (at(front, 1) + at(bl, 1)) / 2 + ny * 7;
-    ctx.beginPath(); ctx.moveTo(at(front, 0), at(front, 1));
-    if (curved) ctx.quadraticCurveTo(mx, my, at(bl, 0), at(bl, 1));
-    else ctx.lineTo(at(bl, 0), at(bl, 1));
-    ctx.stroke();
-    if (curved) {   // তলোয়ারের ধার: বাঁকানো ফলক ভরে দিলে সিলুয়েটটা পুতুলের মতো হয়
-      ctx.fillStyle = steel; ctx.beginPath();
-      ctx.moveTo(at(front, 0), at(front, 1));
-      ctx.quadraticCurveTo(mx, my, at(bl, 0), at(bl, 1));
-      ctx.quadraticCurveTo(mx - nx * 4, my - ny * 4, at(front, 0), at(front, 1));
-      ctx.closePath(); ctx.fill();
-    }
-    // হাতা
-    ctx.strokeStyle = P.accent; ctx.lineWidth = 4;
-    limb(ctx, at(front, 0), at(front, 1), bladeAng + Math.PI, 6, 4, P.accent);
-    // মাথা + জুলফা/সিরপট্টি
+    // সামনের হাত + অস্ত্র
+    const front = seg2(ctx, at(sh, 0) + 3, at(sh, 1), -0.5 + p.armF, 18, 10.8, ink, rim);
+    this.swoosh(ctx, f, at(front, 0), at(front, 1), p);
+    this.weapon(ctx, f, at(front, 0), at(front, 1), p, P, tick);
+
+    // মাথা + মাথার ঢাকা (ধরনভেদে)
     ctx.fillStyle = ink;
-    ctx.beginPath(); ctx.arc(p.lean * 8, headY, 8.4, 0, 6.283); ctx.fill();
-    ctx.strokeStyle = rim; ctx.lineWidth = 1.6; ctx.stroke();
+    ctx.beginPath(); ctx.arc(p.lean * 8, headY, 10.4, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = rim; ctx.lineWidth = 1.7; ctx.stroke();
     const hx = p.lean * 8;
     ctx.fillStyle = ink;
     if (role === 'hero') {
-      // খড়্গধরের নিজের চিহ্ন: গোল টোপর — মুসলিম বাংলার পদাতিকের সাধারণ মাথার ঢাকা
-      ctx.beginPath(); ctx.ellipse(hx, headY - 8, 7.4, 4.2, 0, Math.PI, 0); ctx.fill();
-      ctx.fillRect(hx - 7.4, headY - 8, 14.8, 2.4);
-    } else if (role === 'ally') {
-      ctx.beginPath(); ctx.moveTo(hx - 8, headY - 4);
-      ctx.quadraticCurveTo(hx, headY - 12, hx + 8, headY - 4);
-      ctx.lineTo(hx + 11, headY + 4); ctx.closePath(); ctx.fill();   // পল্লীর দস্তর
+      ctx.beginPath(); ctx.ellipse(hx, headY - 7.4, 8.4, 4.8, 0, Math.PI, 0); ctx.fill();
+      ctx.fillRect(hx - 8.4, headY - 7.6, 16.8, 2.8);
+      ctx.fillStyle = '#e8b93e'; ctx.fillRect(hx - 1.2, headY - 13.4, 2.4, 4.4);   // সোনালি চূড়া
+    } else if (f.kind === 'boss') {
+      ctx.beginPath(); ctx.ellipse(hx, headY - 7, 9.6, 6.2, 0, Math.PI, 0); ctx.fill();
+      ctx.fillStyle = '#e8b93e';
+      ctx.beginPath(); ctx.moveTo(hx, headY - 20); ctx.lineTo(hx + 3, headY - 11); ctx.lineTo(hx - 3, headY - 11); ctx.closePath(); ctx.fill();
+    } else if (role === 'ally' || f.kind === 'swift') {
+      ctx.beginPath(); ctx.moveTo(hx - 9, headY - 4);
+      ctx.quadraticCurveTo(hx, headY - 13, hx + 9, headY - 4);
+      ctx.lineTo(hx + 12 + p.cloth * 4, headY + 5); ctx.closePath(); ctx.fill();
     } else {
-      ctx.beginPath(); ctx.moveTo(hx - 9, headY - 2);
-      ctx.quadraticCurveTo(hx - 1, headY - 15 - p.cloth * 3, hx + 9, headY - 1);
-      ctx.closePath(); ctx.fill();                                     // প্রতিপক্ষের জুটি
-    }
-    if (f.guarding || f.move?.id === 'guard') {   // ঢালের বস্টন: চামড়ার গোল ঢালের নিজের চিহ্ন
-      ctx.fillStyle = 'rgba(255,255,255,.3)';
-      ctx.beginPath(); ctx.arc(at(back, 0) - 2, at(back, 1) + 6, 2.6, 0, 6.283); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(hx - 10, headY - 2);
+      ctx.quadraticCurveTo(hx - 1, headY - 16 - p.cloth * 3, hx + 10, headY - 1);
+      ctx.closePath(); ctx.fill();
     }
     if (isActive(MOVES.guard, f.frame) && f.phase === 'guard') {
-      ctx.globalAlpha = 0.5;
-      ctx.strokeStyle = '#cfe6ef'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(6, chestY + 6, 24, -1.1, 1.1); ctx.stroke();
+      ctx.globalAlpha = 0.55 * fade;
+      ctx.strokeStyle = '#cfe6ef'; ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.arc(8, chestY + 8, 27, -1.15, 1.15); ctx.stroke();
     }
     ctx.restore();
     ctx.globalAlpha = 1;
-    if (f.phase === 'stunned' && f !== undefined) {
-      ctx.fillStyle = 'rgba(255,235,180,.9)';
-      ctx.font = '700 12px system-ui';
-      ctx.textAlign = 'center';
-      ctx.fillText('!', f.x, baseY - 84);
-      ctx.textAlign = 'start';
+
+    // মাথার ওপরের সূচকসমূহ (ক্যামেরা-স্থিরাংকে)
+    const topY = baseY - 124 * depth * bossScale;
+    if (f.telegraph > 0) {
+      const bounce = this.opts.reduceMotion ? 0 : Math.abs(Math.sin(tick / 4)) * 3;
+      ctx.font = '800 21px system-ui, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(8,7,6,.85)'; ctx.fillText('!', f.x + 1.5, topY - 4 - bounce + 1.5);
+      ctx.fillStyle = '#ff6a4a'; ctx.fillText('!', f.x, topY - 4 - bounce);
+      ctx.textAlign = 'left';
     }
+    if (f.phase === 'stunned') {
+      ctx.font = '700 13px system-ui, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(255,235,180,.95)';
+      const tw = this.opts.reduceMotion ? 0 : Math.sin(tick / 5) * 4;
+      ctx.fillText('✦ ✦', f.x + tw, topY - 2);
+      ctx.textAlign = 'left';
+    }
+    if (role !== 'hero' && f.alive && f.hp < tr.maxHp && f.hp > 0) {
+      const bw = f.kind === 'boss' ? 84 : 46;
+      ctx.fillStyle = 'rgba(8,7,6,.66)'; ctx.fillRect(f.x - bw / 2, topY - 12, bw, 5.4);
+      ctx.fillStyle = '#e05a45'; ctx.fillRect(f.x - bw / 2 + 1, topY - 11, (bw - 2) * Math.max(0, f.hp / tr.maxHp), 3.4);
+      if (f.kind === 'boss' || sim?.mode === 'duel') {
+        ctx.fillStyle = 'rgba(8,7,6,.66)'; ctx.fillRect(f.x - bw / 2, topY - 5.4, bw, 4.6);
+        ctx.fillStyle = '#7ec3e8'; ctx.fillRect(f.x - bw / 2 + 1, topY - 4.6, (bw - 2) * Math.max(0, f.guard / 100), 3);
+      }
+    }
+  }
+
+  /** তলোয়ারের ঝাপটা: সক্রিয় ফ্রেমে চাপ-আকৃতির আলোক-রেখা। */
+  private swoosh(ctx: CanvasRenderingContext2D, f: Fighter, hx: number, hy: number, p: Pose): void {
+    const m = f.move;
+    if (!m || f.phase !== 'attack') return;
+    const total = totalFrames(m);
+    const t = Math.max(0, Math.min(1, f.frame / Math.max(1, total)));
+    if (f.frame < m.startup - 1 || t > 0.92) return;
+    const alpha = Math.sin(Math.min(1, Math.max(0, (f.frame - m.startup + 2) / Math.max(2, m.active + 3))) * Math.PI) * 0.5;
+    if (alpha <= 0.02) return;
+    ctx.save();
+    ctx.globalAlpha *= alpha;
+    if (m.id === 'thrust') {
+      ctx.fillStyle = '#fff6dc';
+      ctx.beginPath();
+      ctx.moveTo(hx, hy - 4); ctx.lineTo(hx + 62, hy); ctx.lineTo(hx, hy + 4);
+      ctx.closePath(); ctx.fill();
+    } else {
+      const r = m.id === 'resolve' ? 58 : m.id === 'heavy' ? 52 : 46;
+      const a0 = p.sword - 0.85, a1 = p.sword + 0.35;
+      ctx.fillStyle = m.id === 'resolve' ? '#ffd777' : '#fff6dc';
+      ctx.beginPath();
+      ctx.moveTo(hx + Math.cos(a0) * 12, hy + Math.sin(a0) * 12);
+      ctx.arc(hx, hy, r, a0, a1);
+      ctx.arc(hx, hy, r * 0.55, a1, a0, true);
+      ctx.closePath(); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  private weapon(ctx: CanvasRenderingContext2D, f: Fighter, hx: number, hy: number, p: Pose, P: Palette, tick: number): void {
+    const steel = this.opts.colorblind ? '#ffffff' : '#f6eeda';
+    const glow = f.telegraph > 0 ? '#ff8a5c' : steel;
+    if (f.kind === 'spear') {
+      const ang = f.move?.id === 'thrust' ? -0.06 : p.sword * 0.55;
+      const tip = limb(ctx, hx, hy, ang, 62, 3, '#5d4632');
+      ctx.fillStyle = glow;
+      ctx.save(); ctx.translate(at(tip, 0), at(tip, 1)); ctx.rotate(ang);
+      ctx.beginPath(); ctx.moveTo(0, -3.4); ctx.lineTo(13, 0); ctx.lineTo(0, 3.4); ctx.closePath(); ctx.fill();
+      ctx.restore();
+      limb(ctx, hx, hy, ang + Math.PI, 14, 3, '#5d4632');
+      return;
+    }
+    const bladeAng = p.sword;
+    const bl = limb(ctx, hx, hy, bladeAng, 38, 3.4, glow);
+    const curved = f.move === null || (f.move.id !== 'thrust' && f.move.id !== 'guard');
+    const nx = Math.cos(bladeAng + Math.PI / 2), ny = Math.sin(bladeAng + Math.PI / 2);
+    const mx = (hx + at(bl, 0)) / 2 + nx * 8, my = (hy + at(bl, 1)) / 2 + ny * 8;
+    if (curved) {
+      ctx.fillStyle = glow; ctx.beginPath();
+      ctx.moveTo(hx, hy);
+      ctx.quadraticCurveTo(mx, my, at(bl, 0), at(bl, 1));
+      ctx.quadraticCurveTo(mx - nx * 4.4, my - ny * 4.4, hx, hy);
+      ctx.closePath(); ctx.fill();
+    }
+    // সংকল্পে ফলকে আগুন-আভা
+    if (f.move?.id === 'resolve') {
+      ctx.strokeStyle = `rgba(255,183,71,${0.55 + Math.sin(tick / 3) * 0.2})`; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(at(bl, 0), at(bl, 1)); ctx.stroke();
+    }
+    limb(ctx, hx, hy, bladeAng + Math.PI, 7, 4.4, P.accent);
+    ctx.fillStyle = '#ffd777';
+    ctx.beginPath(); ctx.arc(hx - Math.cos(bladeAng) * 7, hy - Math.sin(bladeAng) * 7, 2.6, 0, 6.283); ctx.fill();
   }
 
   /** ইনপুট-হিন্ট ফুটেজ: কোন মুভ চলছে সেটা ১-লাইনে (মোবাইলে বোতাম-লেবেলের সঙ্গে মিলিয়ে)। */

@@ -228,6 +228,7 @@ test('খেলোয়াড় পেছনে চলে গেলে প্�
   const sim = new Sim(ch1, doc.meta, 'wave', 9);
   const e = sim.enemies[0]!;
   e.x = 200; e.phase = 'idle'; e.move = null; e.stunLeft = 0;
+  e.targetObjective = false;   // এই পরীক্ষা খেলোয়াড়মুখী শত্রুর; নৌকামুখী শত্রু উদ্দেশ্যমূলকভাবেই নৌকার দিকে ফেরে
   sim.player.x = 400; sim.player.phase = 'idle'; sim.player.move = null;
   assert.equal(e.facing, 0, 'শুরুতে বাঁ দিকে মুখ');
   sim.step(emptyInput());
@@ -253,4 +254,115 @@ test('ব্লক না করলেও টানা চাপে ঢাল �
   assert.equal(boss.phase, 'stunned');
   sim.step(emptyInput());
   assert.ok(sim.duel.question !== null, 'ঢাল-ভাঙা ফ্রেমে ইতিহাসের প্রশ্ন ওঠে');
+});
+
+/* ────────────────────────────────────────────────────────────────────────────
+ * আধুনিক আর্কেড-স্তরের পরীক্ষা: মানুষের পড়ার মতো প্রশ্ন-সময়, স্কোর/টানা-আঘাত,
+ * কার্ড-পিকআপ, শত্রুর ধরন ও সতর্ক-ঝলক, ইনপুট-বাফার, cleave, অসীম মোড, সেভ v2।
+ * এর আগে সবচেয়ে বড় অদৃশ্য ত্রুটি ছিল ৪৬-ফ্রেমের প্রশ্ন-জানালা — রোবট উত্তর
+ * দিত মুহূর্তে, মানুষ পারত না। এখন সেই সময়টা টেস্টে আটকানো।
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+test('প্রশ্নের জানালা মানুষের পড়ার মতো (স্টান-ফ্রেমে নয়, নিজের ঘড়িতে)', () => {
+  const sim = new Sim(ch1, doc.meta, 'duel', 17);
+  const boss = sim.enemies[0]!;
+  boss.phase = 'stunned'; boss.stunLeft = 46;   // পুরোনো নিয়মে এই ৪৬ ফ্রেমেই উত্তর দিতে হতো
+  sim.step(emptyInput());
+  assert.ok(sim.duel.question, 'প্রশ্ন উঠেছে');
+  const q = sim.duel.question!;
+  for (let f = 0; f < 240; f++) sim.step(emptyInput());   // ~৪ সেকেন্ড ভেবে নেওয়া
+  assert.ok(sim.duel.question, '২৪০ ফ্রেম পরেও প্রশ্ন থাকে — মানুষ পড়তে পারে');
+  assert.ok(sim.duel.qTime > 0 && sim.duel.qTime < sim.duel.qTotal, 'প্রশ্ন-ঘড়ি কমছে কিন্তু শেষ হয়নি');
+  assert.equal(boss.phase, 'stunned', 'প্রশ্ন চললে বস আক্রমণে ফেরে না');
+  sim.step(press(null, { answer: q.answer }));
+  assert.equal(sim.duel.truths, 1, 'দেরিতে দেওয়া সঠিক উত্তরও গণ্য');
+});
+
+test('স্কোর ও টানা-আঘাত: আঘাত জমলে দুটোই বাড়ে', () => {
+  const sim = new Sim(ch1, doc.meta, 'wave', 23);
+  for (let f = 0; f < 300 && sim.hitsLanded < 3; f++) {
+    const foe = sim.enemies.find((e) => e.alive);
+    if (foe) { foe.x = sim.player.x + 42; foe.y = sim.player.y; foe.targetObjective = false; }
+    sim.player.hp = MAX_HP;
+    sim.step(sim.player.actionable ? press('cut') : emptyInput());
+  }
+  assert.ok(sim.hitsLanded >= 3, `আঘাত লেগেছে (${sim.hitsLanded})`);
+  assert.ok(sim.comboBest >= 2, 'টানা-আঘাত গোনা হচ্ছে');
+  assert.ok(sim.score > 0, 'স্কোর জমছে');
+});
+
+test('জ্ঞান-স্ক্রল ছুঁলেই কার্ড খোলে ও এই রানের শেখায় জমা পড়ে', () => {
+  const sim = new Sim(ch1, doc.meta, 'wave', 29);
+  sim.dropCard(sim.player.x, sim.player.y);
+  assert.equal(sim.pickups.length, 1);
+  const cardId = sim.pickups[0]!.card.id;
+  const ev = sim.step(emptyInput());
+  assert.ok(ev.some((e) => e.t === 'pickup'), 'পিকআপ-ইভেন্ট এসেছে');
+  assert.ok(sim.readCards.has(cardId), 'কার্ড পড়া হয়েছে');
+  assert.ok(sim.collectedRun.includes(cardId), 'ফলাফল-পর্দার শেখা-তালিকায় আছে');
+  assert.ok(sim.score >= 80);
+});
+
+test('ঢেউয়ে শত্রুর অন্তত তিন ধরন আসে ও বড় আঘাতের আগে সতর্ক-ঝলক দেখা যায়', () => {
+  const sim = new Sim(ch1, doc.meta, 'wave', 31);
+  const kinds = new Set(sim.enemies.map((e) => e.kind));
+  assert.ok(kinds.size >= 3, `ধরন-বৈচিত্র্য: ${[...kinds].join(',')}`);
+  const duel = new Sim(ch1, doc.meta, 'duel', 37);
+  const boss = duel.enemies[0]!;
+  let sawTelegraph = false;
+  for (let f = 0; f < 1500 && !sawTelegraph && !duel.over; f++) {
+    duel.player.hp = MAX_HP;
+    duel.player.x = boss.x - 52; duel.player.y = boss.y;
+    duel.step(emptyInput());
+    if (boss.telegraph > 0) sawTelegraph = true;
+  }
+  assert.ok(sawTelegraph, 'বস বড় আঘাতের আগে ঝলক দেয় — parry/সরে যাওয়া পড়া যায়');
+});
+
+test('ইনপুট-বাফার: ব্যস্ত অবস্থায় চাপা বোতাম হারায় না', () => {
+  const sim = new Sim(ch1, doc.meta, 'wave', 41);
+  sim.step(press('cut'));
+  for (let f = 0; f < 11; f++) sim.step(emptyInput());
+  sim.step(press('heavy'));   // কাটার রিকভারিতে চাপা — আগে এটা হারিয়ে যেত
+  let sawHeavy = false;
+  for (let f = 0; f < 16 && !sawHeavy; f++) { sim.step(emptyInput()); if (sim.player.move?.id === 'heavy') sawHeavy = true; }
+  assert.ok(sawHeavy, 'বাফার করা কোপ সুযোগ পেলেই বেরোয়');
+});
+
+test('ভারী কোপ এক সুইংয়ে পাশাপাশি দুজনকে ছোঁয় (cleave)', () => {
+  const sim = new Sim(ch1, doc.meta, 'wave', 43);
+  const [a, b] = sim.enemies;
+  const a0 = a!.hp + a!.guard, b0 = b!.hp + b!.guard;
+  sim.step(press('heavy'));
+  for (let f = 0; f < 26; f++) {
+    a!.x = sim.player.x + 40; a!.y = sim.player.y;
+    b!.x = sim.player.x + 56; b!.y = sim.player.y;
+    sim.player.facing = 1;
+    sim.step(emptyInput());
+  }
+  assert.ok(a!.hp + a!.guard < a0, 'প্রথমজন ছোঁয়া খেয়েছে');
+  assert.ok(b!.hp + b!.guard < b0, 'দ্বিতীয়জনও একই সুইংয়ে');
+});
+
+test('অসীম ঢেউ: ঘড়ি-জয় নেই, ঢেউ চলতেই থাকে', () => {
+  const sim = new Sim(ch1, doc.meta, 'wave', 47, new Map(), { endless: true });
+  assert.equal(sim.endless, true);
+  assert.ok(sim.waves > 90, 'ঢেউয়ের সংখ্যা সীমাহীন-প্রায়');
+  sim.timeLeft = 1;
+  sim.step(emptyInput()); sim.step(emptyInput());
+  assert.equal(sim.over, null, 'সময় শেষে অসীম মোড থামে না');
+});
+
+test('সেভ v2: স্কোর/তারা/সেরা হাল-কোডে ঘুরে আসে', async () => {
+  const { newProgress, encodeSave, decodeSave } = await import('../src/save.ts');
+  const p = newProgress();
+  p.done = [0, 1]; p.best = { '1': 2 }; p.scores = { '1': 4321 }; p.stars = { '1': 3 };
+  p.endlessBest = 777; p.rushBest = 555; p.totalScore = 9999;
+  p.read = [ch1.cards[0]!.id];
+  const back = decodeSave(encodeSave(p), doc);
+  assert.ok(back, 'কোড পড়া গেছে');
+  assert.equal(back!.scores['1'], 4321);
+  assert.equal(back!.stars['1'], 3);
+  assert.equal(back!.endlessBest, 777);
+  assert.deepEqual(back!.read, p.read);
 });
