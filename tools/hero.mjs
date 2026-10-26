@@ -49,9 +49,14 @@ function gameCanvas(sim, chapterId, ticks, policy) {
     const swing = sim.player.move && sim.player.move.id ? 1 : 0;
     const brk = sim.enemies.some((e) => e.guard < 62 || e.phase === 'stunned') ? 1 : 0;
     const near = sim.player.x > 210 && sim.player.x < 550 ? 3 : 0;   // মাঝির দিকে থাকলে কম্পোজিশন ভালো
+    // পোশাক আলাদা বোঝাতে যোদ্ধাদের শরীর আলাদা থাকতে হবে — গায়ে-গায়ে লেগে থাকা ফ্রেমে দুজন এক মূর্তি হয়ে যায়
+    const alive = sim.enemies.filter((e) => e.phase !== 'downed' && e.x > 55 && e.x < 705);
+    const nearest = alive.length ? Math.min(...alive.map((e) => Math.abs(e.x - sim.player.x))) : 999;
+    const separation = nearest >= 78 && nearest <= 175 ? 8 : nearest >= 58 ? 2 : -9;
+    const variety = new Set(alive.map((e) => e.kind)).size * 1.4;
     // বোনাস: স্ক্রল-পিকআপ বা টানা-আঘাত থাকলে সেই ফ্রেমই নতুন খেলার আসল গল্প বলে
     const pk = sim.pickups.length ? 3 : 0;
-    const score = act * 3 + swing * 2 + brk * 4 + near + pk + sim.combo * 0.4 + (sim.over ? 1 : 0) + t / 4000;
+    const score = act * 3 + swing * 2 + brk * 4 + near + pk + separation + variety + alive.length * 0.7 + sim.combo * 0.4 + (sim.over ? 1 : 0) + t / 4000;
     if (score > bestScore) { bestScore = score; best = cv.toBuffer('image/png'); }
   }
   return { buf: best, sim };
@@ -66,7 +71,7 @@ function makePolicy(sim) {
     const foe = sim.enemies.find((e) => e.phase !== 'downed');
     if (foe) {
       const dx = foe.x - sim.player.x;
-      if (Math.abs(dx) > 54) pending.moveX = dx > 0 ? 1 : -1;
+      if (Math.abs(dx) > 86) pending.moveX = dx > 0 ? 1 : -1;
       else if (t % 9 < 2) pending.pressed = t % 63 < 3 ? 'heavy' : 'cut';
       else if (foe.phase === 'attack' && t % 5 === 0) pending.pressed = 'guard';
     }

@@ -319,6 +319,41 @@ test('ঢেউয়ে শত্রুর অন্তত তিন ধরন 
   assert.ok(sawTelegraph, 'বস বড় আঘাতের আগে ঝলক দেয় — parry/সরে যাওয়া পড়া যায়');
 });
 
+test('শত্রুর সুইং ও সতর্ক-ঝলক সিম-ইভেন্টে আসে — Game সেগুলোই শব্দে বদলায়', () => {
+  const one = new Sim(ch1, doc.meta, 'wave', 39);
+  const first = one.step(press('cut'));
+  assert.ok(first.some((e) => e.t === 'swing' && e.byPlayer && e.kind === 'cut'), 'নিজের সুইং-ইভেন্ট নেই');
+
+  const duel = new Sim(ch1, doc.meta, 'duel', 37);
+  const boss = duel.enemies[0]!;
+  let sawHostileSwing = false;
+  let sawTelegraphEvent = false;
+  for (let f = 0; f < 1800 && !(sawHostileSwing && sawTelegraphEvent) && !duel.over; f++) {
+    duel.player.hp = MAX_HP;
+    duel.player.x = boss.x - 52; duel.player.y = boss.y;
+    const ev = duel.step(emptyInput());
+    if (ev.some((e) => e.t === 'swing' && e.hostile && !e.byPlayer)) sawHostileSwing = true;
+    if (ev.some((e) => e.t === 'telegraph')) sawTelegraphEvent = true;
+  }
+  assert.ok(sawHostileSwing, 'শত্রুর সুইং নীরব — hostile swing ইভেন্ট আসেনি');
+  assert.ok(sawTelegraphEvent, 'বড় আঘাতের telegraph ইভেন্ট আসেনি — সতর্ক-শব্দ বাজবে না');
+});
+
+test('শরীরের সংঘর্ষ: নায়ক ও বস একই জায়গায় দাঁড়াতে পারে না, ড্যাশে পাশ কাটানো যায়', () => {
+  const sim = new Sim(ch1, doc.meta, 'duel', 41);
+  const boss = sim.enemies[0]!;
+  boss.x = 330; boss.y = 0; boss.phase = 'idle'; boss.move = null;
+  sim.player.x = 322; sim.player.y = 0; sim.player.phase = 'idle'; sim.player.move = null;
+  sim.step(emptyInput());
+  assert.ok(Math.abs(boss.x - sim.player.x) >= 43, `দূরত্ব মাত্র ${Math.abs(boss.x - sim.player.x)} — দুই মূর্তি গায়ে গায়ে মিশে যাবে`);
+
+  sim.player.x = boss.x - 8; sim.player.y = boss.y;
+  sim.player.phase = 'idle'; sim.player.move = null;
+  sim.step(press('side'));
+  assert.equal(sim.player.phase, 'side');
+  assert.ok(Math.abs(boss.x - sim.player.x) < 43, 'ড্যাশের ফ্রেমে শরীর-ঠেলা পাশ কাটানো আটকাচ্ছে');
+});
+
 test('ইনপুট-বাফার: ব্যস্ত অবস্থায় চাপা বোতাম হারায় না', () => {
   const sim = new Sim(ch1, doc.meta, 'wave', 41);
   sim.step(press('cut'));

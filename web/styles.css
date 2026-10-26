@@ -292,3 +292,17 @@ button.ok{background:var(--good)!important;color:#101a0f!important}
 /* বিল্ড-ছাপ: ক্যাশ-সমস্যায় 'কিছু বদলায়নি' মনে হলে এটা দেখেই বোঝা যায় */
 .buildline{text-align:center}
 #buildstamp{font-variant-numeric:tabular-nums;letter-spacing:.04em;color:rgba(240,230,207,.45);font-size:.8em}
+
+/* শব্দ-ফটক: ব্রাউজার নিজে থেকে শব্দ চালাতে দেয় না, তাই প্রথম চাপটাই খেলার অংশ */
+.sound-gate{display:flex;flex-direction:column;align-items:center;gap:1px;margin:18px auto 0;max-width:860px;width:100%;
+  padding:13px 16px;border-radius:16px;border:2px solid var(--gold);font:inherit;font-weight:800;font-size:1.08em;color:#ffe9a8;
+  background:linear-gradient(160deg,#5a430e,#241a04);box-shadow:0 6px 0 rgba(0,0,0,.5),0 0 24px rgba(232,185,62,.25);
+  animation:readyPulse .8s infinite alternate}
+.sound-gate small{color:#d9c48d;font-weight:400;font-size:.76em}
+.sound-gate.on{animation:none;border-color:#40502f;background:linear-gradient(160deg,#2c3a1e,#161d0f);color:#cdeabc;box-shadow:0 4px 0 rgba(0,0,0,.5)}
+#hudtop button.needs-sound{border-color:var(--gold);color:var(--gold2);animation:readyPulse .8s infinite alternate}
+.roster{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:10px 0 2px}
+.roster b{color:#ffe9a8;font-size:.9em}
+.roster span{--c:#999;display:inline-flex;align-items:center;gap:7px;background:rgba(0,0,0,.32);border:1px solid rgba(255,240,200,.15);border-radius:999px;padding:5px 11px;font-size:.84em}
+.roster i{width:13px;height:13px;border-radius:50%;background:var(--c);border:2px solid rgba(255,255,255,.55);flex:0 0 auto}
+.roster .me{border-color:rgba(255,215,119,.6);color:#ffe9a8;font-weight:700}

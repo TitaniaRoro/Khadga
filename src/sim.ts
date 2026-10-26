@@ -58,6 +58,8 @@ export type SimEvent =
   | { t: 'downed'; who: string; x: number; y: number }
   | { t: 'comboend'; combo: number; bonus: number }
   | { t: 'phase'; phase: number }
+  | { t: 'swing'; who: string; kind: InputName; byPlayer: boolean; hostile: boolean; x: number }
+  | { t: 'telegraph'; who: string; x: number }
   | { t: 'break'; text: string }
   | { t: 'win' } | { t: 'lose'; why_bn: string } | { t: 'pause' };
 
@@ -368,6 +370,12 @@ export class Sim {
     if (this.ally?.alive) this.allyTick(this.ally);
     this.separate();
 
+    // প্রতিটি আক্রমণের শুরু একবারই ঘোষণা হয় — শত্রুর সুইংও এখন শোনা যায় (শুধু নিজের বোতাম-চাপ নয়)
+    for (const f of [this.player, ...this.enemies, ...(this.ally ? [this.ally] : [])]) {
+      if (f.phase === 'attack' && f.move && f.frame === 0) {
+        this.events.push({ t: 'swing', who: f.name_bn, kind: f.move.id, byPlayer: f === this.player, hostile: f !== this.player && f !== this.ally, x: f.x });
+      }
+    }
     for (const f of [this.player, ...this.enemies, ...(this.ally ? [this.ally] : [])]) f.step();
     this.resolveHits();
     this.guardRegen();
@@ -612,6 +620,27 @@ export class Sim {
         }
       }
     }
+    // শরীরের সংঘর্ষ: নায়ক/মিত্র শত্রুর ভেতর দিয়ে হেঁটে যেতে পারে না।
+    // এর আগে দ্বন্দ্বে দুজন একই জায়গায় দাঁড়িয়ে একটাই মূর্তি হয়ে যেতেন।
+    const friendlies = [this.player, ...(this.ally ? [this.ally] : [])];
+    for (const f of friendlies) for (const e of all) this.bodyPush(f, e);
+    if (this.ally) this.bodyPush(this.player, this.ally);
+  }
+
+  private bodyPush(a: Fighter, b: Fighter): void {
+    if (!a.alive || !b.alive || a.phase === 'downed' || b.phase === 'downed') return;
+    if (a.phase === 'side' || b.phase === 'side') return; // সবে/ড্যাশে পাশ কাটানো যায়
+    if (Math.abs(a.y - b.y) >= 20) return;
+    const radius = (f: Fighter): number => f.kind === 'boss' ? 24 : f.kind === 'shield' ? 22 : f.kind === 'hero' ? 20 : f.kind === 'swift' ? 17 : 19;
+    const mass = (f: Fighter): number => f.kind === 'boss' ? 4.4 : f.kind === 'shield' ? 2.2 : f.kind === 'hero' ? 2.4 : f.kind === 'swift' ? 0.8 : 1;
+    const min = radius(a) + radius(b);
+    const dx = b.x - a.x;
+    if (Math.abs(dx) >= min) return;
+    const dir = dx >= 0 ? 1 : -1;
+    const overlap = min - Math.abs(dx);
+    const aShare = (1 / mass(a)) / ((1 / mass(a)) + (1 / mass(b)));
+    a.x = clamp(a.x - dir * overlap * aShare, 40, 720);
+    b.x = clamp(b.x + dir * overlap * (1 - aShare), 40, 720);
   }
 
   private aiTick(e: Fighter): void {
@@ -671,6 +700,7 @@ export class Sim {
       // বড় আঘাতের আগে ঝলক — খেলোয়াড় দেখে রোধ/সরে যাওয়ার সুযোগ পায়
       e.telegraph = e.kind === 'boss' ? Math.max(11, 17 - this.bossPhase * 2) : 15;
       e.pendingMove = pick;
+      this.events.push({ t: 'telegraph', who: e.name_bn, x: e.x });
     } else e.start(pick);
     this.clampEnemy(e);
   }

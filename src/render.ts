@@ -14,7 +14,7 @@
  * ইমেজ-ভিত্তিক ফ্রেম দরকার হলে এই এক ইন্টারফেস বদলেই ৩D→স্প্রাইট বেক বসবে —
  * সিমুলেশন-স্তর অক্ষত থাকবে।
  */
-import type { Fighter } from './fighter.ts';
+import type { Fighter, EnemyKind } from './fighter.ts';
 import { MOVES, isActive, totalFrames } from './frames.ts';
 import type { Sim } from './sim.ts';
 
@@ -57,6 +57,43 @@ export const PALETTES: Palette[] = [
   { ground: '#7c4650', sky: '#ffc4a3', ink: '#2a1116', accent: '#d65a6e', hero: '#fdeeda', enemy: '#5d4348', ally: '#cf9c7d' },
   { ground: '#55497a', sky: '#cdb1dd', ink: '#191231', accent: '#8a5fd0', hero: '#f2eaff', enemy: '#4a4458', ally: '#ac9ccf' },
 ];
+
+
+/**
+ * পোশাক-ব্যবস্থা: প্রতিটি ধরনের আলাদা পোশাক, মাথার ঢাকা, গড়ন ও অস্ত্র।
+ * আগে সবাই ছিল একই কালো কুর্তা — শুধু স্যাশের রঙ বদলাত, তাই লড়াইয়ে "কে নায়ক,
+ * কে শত্রু" পড়া যেত না। এখন রঙ + আকৃতি + প্রতীক তিনটেই আলাদা, ফলে রঙ-দৃষ্টি
+ * কম হলেও মাথার ঢাকা/অস্ত্র/বুকের প্রতীক দেখে ধরন চেনা যায়।
+ */
+export interface Outfit {
+  label_bn: string;
+  garment: string; shade: string; trim: string; sash: string;
+  lower: string; shin: string; head: string;
+  badge: string; weapon_bn: string;
+  shape: 'angrakha' | 'tunic' | 'armor' | 'coat' | 'vest' | 'robe' | 'farmer';
+  build: number; scale: number; weaponLen: number;
+}
+
+export const OUTFITS: Record<EnemyKind, Outfit> = {
+  hero:   { label_bn: 'তুমি — খড়্গধারী', garment: '#f0dcab', shade: '#caa653', trim: '#ffd777', sash: '#b8322a', lower: '#145c5b', shin: '#8a5a36', head: '#e8b93e', badge: '✦', weapon_bn: 'খড়্গ', shape: 'angrakha', build: 1, scale: 1.04, weaponLen: 42 },
+  blade:  { label_bn: 'তলোয়ারধারী শত্রু', garment: '#a63b2a', shade: '#642016', trim: '#e6a15c', sash: '#3c2417', lower: '#4b3423', shin: '#36261a', head: '#8f2f21', badge: '▲', weapon_bn: 'তলোয়ার', shape: 'tunic', build: 1, scale: 1, weaponLen: 38 },
+  shield: { label_bn: 'ঢালধারী শত্রু', garment: '#c78a2e', shade: '#74450f', trim: '#ffe1a0', sash: '#5c3510', lower: '#51402a', shin: '#3d2d1c', head: '#9aa3a8', badge: '■', weapon_bn: 'গদা ও বড় ঢাল', shape: 'armor', build: 1.28, scale: 1.08, weaponLen: 24 },
+  spear:  { label_bn: 'বর্শাধারী শত্রু', garment: '#315f9e', shade: '#1b3560', trim: '#bcd9ff', sash: '#172c4d', lower: '#3f4e68', shin: '#2b3547', head: '#244a7d', badge: '◆', weapon_bn: 'লম্বা বর্শা', shape: 'coat', build: 0.9, scale: 1.03, weaponLen: 62 },
+  swift:  { label_bn: 'দ্রুতগামী শত্রু', garment: '#8e3fa3', shade: '#4e1f63', trim: '#ff9d45', sash: '#ff7a2f', lower: '#47234f', shin: '#ff9d45', head: '#b657c9', badge: '≫', weapon_bn: 'জোড়া ছোরা', shape: 'vest', build: 0.82, scale: 0.94, weaponLen: 27 },
+  boss:   { label_bn: 'মিথের প্রহরী (বস)', garment: '#47275e', shade: '#1c0f2b', trim: '#ffd777', sash: '#a61e2e', lower: '#5c1f2e', shin: '#2b1a33', head: '#d8a72e', badge: '♛', weapon_bn: 'বিরাট খাঁড়া', shape: 'robe', build: 1.22, scale: 1.18, weaponLen: 52 },
+  ally:   { label_bn: 'মিত্র কৃষক', garment: '#efe3bd', shade: '#6f9448', trim: '#7db45a', sash: '#7a4a22', lower: '#f2ead0', shin: '#8a5a36', head: '#d9b45c', badge: '❦', weapon_bn: 'লাঠি', shape: 'farmer', build: 0.96, scale: 0.99, weaponLen: 50 },
+};
+
+export function outfitKeyOf(f: Fighter, role: 'hero' | 'foe' | 'ally' = 'foe'): EnemyKind {
+  if (role === 'hero') return 'hero';
+  if (role === 'ally') return 'ally';
+  return f.kind;
+}
+export function outfitOf(f: Fighter, role: 'hero' | 'foe' | 'ally' = 'foe'): Outfit {
+  return OUTFITS[outfitKeyOf(f, role)];
+}
+
+const SKIN = '#8a5a36';
 
 const W = 760, H = 360, GROUND = 268;
 export const STAGE = { W, H, GROUND } as const;
@@ -700,10 +737,17 @@ export class Renderer {
     // আসল চলা সিমে x/y-বদলে ধরা পড়ে — হাঁটার চক্র সেই বদল থেকেই চলে
     const moving = f.phase === 'idle' ? Math.min(1, tr.speed / 1.1) : 0;
     const p = poseOf(f, tick, tr.phase, moving);
-    const ink = f.hurtAge < 5 ? '#f4ead2' : '#16110b';
-    const rimBase = this.opts.colorblind ? (role === 'hero' ? '#ffffff' : role === 'ally' ? '#7ef0c1' : '#9fd6ff') : f.tone;
+    const outfitKey = outfitKeyOf(f, role);
+    const outfit = OUTFITS[outfitKey];
+    const hurtFlash = f.hurtAge < 5;
+    const garment = hurtFlash ? '#fff3d6' : outfit.garment;
+    const garmentShade = hurtFlash ? '#f4ead2' : outfit.shade;
+    const lowerCol = hurtFlash ? '#fff3d6' : outfit.lower;
+    const shinCol = hurtFlash ? '#fff3d6' : outfit.shin;
+    const outline = hurtFlash ? '#ffffff' : mix(outfit.shade, '#000000', 0.42);
+    const rimBase = this.opts.colorblind ? (role === 'hero' ? '#ffffff' : role === 'ally' ? '#7ef0c1' : '#9fd6ff') : outfit.trim;
     const rim = f.telegraph > 0 ? '#ff5a3c' : rimBase;
-    const bossScale = f.kind === 'boss' ? 1.16 : f.kind === 'shield' ? 1.07 : 1;
+    const bossScale = outfit.scale;
     const fade = f.phase === 'downed' ? Math.max(0, 1 - f.deadAge / 55) : 1;
 
     // ড্যাশ-ভূতছায়া
@@ -726,6 +770,11 @@ export class Renderer {
     // মাটির ছায়া
     ctx.fillStyle = 'rgba(0,0,0,.34)';
     ctx.beginPath(); ctx.ellipse(0, 3, 36 * bossScale, 8, 0, 0, 6.283); ctx.fill();
+    // পায়ের নিচের ধরন-বলয়: ভিড়েও এক নজরে "আমি কোথায়, শত্রু কোন ধরনের" পড়া যায়
+    ctx.strokeStyle = outfit.trim; ctx.lineWidth = role === 'hero' ? 3 : 1.7; ctx.globalAlpha *= role === 'hero' ? 0.95 : 0.62;
+    ctx.beginPath(); ctx.ellipse(0, 3, 38 * bossScale, 8.6, 0, 0, 6.283); ctx.stroke();
+    if (role === 'hero') { ctx.strokeStyle = outfit.sash; ctx.beginPath(); ctx.ellipse(0, 3, 31 * bossScale, 6.4, 0, 0, 6.283); ctx.stroke(); }
+    ctx.globalAlpha = fade * (f.invulnerable && f.phase === 'side' ? 0.75 : 1);
     ctx.scale(depth * dir * 1.34 * bossScale, depth * 1.34 * bossScale);
     // সংকল্প-প্রস্তুত আভা (নায়ক)
     if (role === 'hero' && f.meter >= 100) {
@@ -737,90 +786,123 @@ export class Renderer {
     const chestY = hipY - 30;
     const headY = chestY - 17;
 
-    // বসের আঁচল (পেছনে ওড়া কাপড়)
-    if (f.kind === 'boss') {
-      ctx.fillStyle = mix(P.accent, '#000000', 0.25);
+    // পেছনের ওড়া কাপড়: বসের আলখাল্লা, নায়কের লাল উত্তরীয়, দ্রুতগামীর স্কার্ফ, বর্শাধারীর কোটের লেজ
+    const flutter = this.opts.reduceMotion ? 0 : p.cloth * 7 + moving * 5;
+    if (outfitKey === 'boss') {
+      ctx.fillStyle = '#6e1830';
       ctx.beginPath();
-      ctx.moveTo(-6, chestY);
-      ctx.quadraticCurveTo(-26 - p.cloth * 8, hipY + 4, -20 - p.cloth * 10, -2);
-      ctx.lineTo(-6, hipY + 6); ctx.closePath(); ctx.fill();
+      ctx.moveTo(-7, chestY - 2);
+      ctx.quadraticCurveTo(-34 - flutter, hipY + 2, -27 - flutter * 1.2, 0);
+      ctx.lineTo(-14, hipY + 12); ctx.lineTo(-5, hipY + 4); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = outfit.trim; ctx.lineWidth = 1.6; ctx.stroke();
+    } else if (outfitKey === 'hero') {
+      ctx.fillStyle = outfit.sash;
+      ctx.beginPath();
+      ctx.moveTo(-8, hipY + 1);
+      ctx.quadraticCurveTo(-24 - flutter, hipY + 8, -29 - flutter, hipY + 22);
+      ctx.lineTo(-13, hipY + 20); ctx.lineTo(-5, hipY + 7); ctx.closePath(); ctx.fill();
+    } else if (outfitKey === 'swift') {
+      ctx.strokeStyle = outfit.trim; ctx.lineWidth = 4.4; ctx.lineCap = 'round';
+      for (const dy of [0, 6]) {
+        ctx.beginPath(); ctx.moveTo(-5, chestY + 2 + dy);
+        ctx.quadraticCurveTo(-19 - flutter, chestY + 8 + dy, -27 - flutter * 1.3, chestY + 3 + dy); ctx.stroke();
+      }
+    } else if (outfitKey === 'spear') {
+      ctx.fillStyle = garmentShade;
+      ctx.beginPath();
+      ctx.moveTo(-8, hipY + 2); ctx.lineTo(-17 - flutter * 0.5, hipY + 25); ctx.lineTo(-4, hipY + 24); ctx.closePath(); ctx.fill();
     }
     // পা (ভরা আকৃতি, মোজা-ধাঁচের মুখ)
-    const legB = seg2(ctx, -2, hipY, 1.72 + p.legB, 23, 13, ink, rim);
-    const footB = seg2(ctx, at(legB, 0), at(legB, 1), 1.5 - p.legB * 0.45, 20, 10.6, ink, rim);
-    seg(ctx, at(footB, 0), at(footB, 1), 0.15, 10, 7.4, 3.6, ink);
-    const legF = seg2(ctx, 1, hipY, 1.34 + p.legF, 23, 13.4, ink, rim);
-    const footF = seg2(ctx, at(legF, 0), at(legF, 1), 1.5 - p.legF * 0.45, 20, 10.8, ink, rim);
-    seg(ctx, at(footF, 0), at(footF, 1), 0.15, 10, 7.4, 3.6, ink);
+    const shoe = outfitKey === 'hero' || outfitKey === 'ally' ? SKIN : '#21160e';
+    const legB = seg2(ctx, -2, hipY, 1.72 + p.legB, 23, 13 * outfit.build, lowerCol, outline);
+    const footB = seg2(ctx, at(legB, 0), at(legB, 1), 1.5 - p.legB * 0.45, 20, 10.6 * outfit.build, shinCol, outline);
+    seg(ctx, at(footB, 0), at(footB, 1), 0.15, 10, 7.4, 3.6, shoe);
+    const legF = seg2(ctx, 1, hipY, 1.34 + p.legF, 23, 13.4 * outfit.build, lowerCol, outline);
+    const footF = seg2(ctx, at(legF, 0), at(legF, 1), 1.5 - p.legF * 0.45, 20, 10.8 * outfit.build, shinCol, outline);
+    seg(ctx, at(footF, 0), at(footF, 1), 0.15, 10, 7.4, 3.6, shoe);
 
-    // ধড়: কুর্তা-আকৃতি + কোমরবন্ধ + স্যাশ
+    // ধড়: পোশাকের আকৃতি ধরনভেদে — আঙ্গরাখা, খাটো টিউনিক, সেলাই-করা বর্ম, লম্বা কোট, খাটো ফতুয়া, আলখাল্লা, কৃষকের জামা
+    const leanX = p.lean * 6;
+    const half = 14 * outfit.build, waist = 12 * outfit.build;
+    const skirt = outfit.shape === 'robe' ? 27 : outfit.shape === 'coat' ? 24 : outfit.shape === 'angrakha' ? 16 : outfit.shape === 'armor' ? 14 : outfit.shape === 'tunic' ? 11 : outfit.shape === 'farmer' ? 9 : 6;
+    const flare = (outfit.shape === 'robe' ? 22 : outfit.shape === 'armor' ? 18 : outfit.shape === 'angrakha' ? 17 : outfit.shape === 'coat' ? 13 : 15) * outfit.build;
     const bodyPath = (): void => {
       ctx.beginPath();
-      ctx.moveTo(p.lean * 6 - 14, chestY - 3); ctx.lineTo(p.lean * 6 + 14, chestY - 3);
-      ctx.lineTo(12, hipY - 2); ctx.lineTo(16 + p.cloth * 5, hipY + 16); ctx.lineTo(-16 - p.cloth * 7, hipY + 15); ctx.lineTo(-12, hipY - 2);
+      ctx.moveTo(leanX - half, chestY - 3); ctx.lineTo(leanX + half, chestY - 3);
+      ctx.lineTo(waist, hipY - 2); ctx.lineTo(flare + p.cloth * 5, hipY + skirt); ctx.lineTo(-flare - p.cloth * 7, hipY + skirt - 1); ctx.lineTo(-waist, hipY - 2);
       ctx.closePath();
     };
-    ctx.lineWidth = 4.6; ctx.lineJoin = 'round'; ctx.strokeStyle = rim; bodyPath(); ctx.stroke();
-    ctx.fillStyle = ink; bodyPath(); ctx.fill();
-    // পেটের ছায়া-অর্ধেক ও কাঁধের আলো
-    ctx.fillStyle = 'rgba(0,0,0,.4)';
-    ctx.beginPath(); ctx.moveTo(p.lean * 6 + 2, chestY); ctx.lineTo(10, hipY - 2); ctx.lineTo(11, hipY + 11); ctx.lineTo(1, hipY + 11); ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = mix(ink === '#16110b' ? '#16110b' : '#ffffff', rimBase, 0.65); ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.moveTo(p.lean * 6 - 8, chestY - 2); ctx.lineTo(p.lean * 6 + 8, chestY - 2); ctx.stroke();
-    // স্যাশ ও কোমরবন্ধ: দল-চেনার প্রধান রঙ
-    ctx.strokeStyle = role === 'hero' ? '#e8b93e' : P.accent; ctx.lineWidth = 4.4; ctx.lineCap = 'round';
-    ctx.beginPath(); ctx.moveTo(p.lean * 6 - 9, chestY + 3); ctx.lineTo(8, hipY + 2); ctx.stroke();
-    ctx.fillStyle = mix(P.accent, '#000000', 0.12);
-    ctx.fillRect(-13, hipY + 3, 27, 5);
+    ctx.lineWidth = 4.2; ctx.lineJoin = 'round'; ctx.strokeStyle = outline; bodyPath(); ctx.stroke();
+    ctx.fillStyle = garment; bodyPath(); ctx.fill();
+    ctx.fillStyle = garmentShade;
+    ctx.beginPath(); ctx.moveTo(leanX + 2, chestY); ctx.lineTo(waist - 2, hipY - 2); ctx.lineTo(waist - 1, hipY + Math.min(11, skirt)); ctx.lineTo(1, hipY + Math.min(11, skirt)); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = outfit.trim; ctx.lineWidth = 1.8;
+    ctx.beginPath(); ctx.moveTo(leanX - half + 4, chestY - 2); ctx.lineTo(leanX + half - 4, chestY - 2); ctx.stroke();
+    this.outfitDetails(ctx, outfitKey, outfit, leanX, chestY, hipY, skirt);
+    // স্যাশ ও কোমরবন্ধ
+    if (outfitKey === 'hero' || outfitKey === 'boss' || outfitKey === 'swift') {
+      ctx.strokeStyle = outfit.sash; ctx.lineWidth = outfitKey === 'boss' ? 6 : 5; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(leanX - half + 4, chestY + 3); ctx.lineTo(waist - 3, hipY + 2); ctx.stroke();
+    }
+    ctx.fillStyle = outfit.sash;
+    ctx.fillRect(-waist - 1, hipY + 2, waist * 2 + 3, outfit.shape === 'armor' || outfit.shape === 'robe' ? 6.4 : 5);
+    ctx.fillStyle = outfit.trim; ctx.fillRect(-2.6, hipY + 3.2, 5.2, 3.6);   // বেল্টের বকলেস
 
     const sh: [number, number] = [p.lean * 6, chestY + 1];
     // পেছনের হাত + ঢাল
-    const back = seg2(ctx, at(sh, 0) - 3, at(sh, 1), Math.PI - 0.7 + p.armB, 17, 10.8, ink, rim);
+    const back = seg2(ctx, at(sh, 0) - 3, at(sh, 1), Math.PI - 0.7 + p.armB, 17, 10.8 * outfit.build, garment, outline);
     const showShield = f.guarding || f.move?.id === 'guard' || f.kind === 'shield' || f.kind === 'boss';
     if (showShield) {
       const sx = f.kind === 'shield' || f.kind === 'boss' ? 8 : at(back, 0) - 2;
       const sy = f.kind === 'shield' || f.kind === 'boss' ? chestY + 14 : at(back, 1) + 7;
       const r = f.kind === 'shield' ? 17 : f.kind === 'boss' ? 15 : 12.5;
-      ctx.fillStyle = mix(P.accent, '#000000', 0.08);
-      ctx.beginPath(); ctx.arc(sx, sy, r, 0, 6.283); ctx.fill();
-      ctx.strokeStyle = mix(P.accent, '#ffffff', 0.5); ctx.lineWidth = 2; ctx.stroke();
-      ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 1.4;
-      ctx.beginPath(); ctx.arc(sx, sy, r * 0.66, 0, 6.283); ctx.stroke();
-      ctx.fillStyle = '#ffe1a0';
-      ctx.beginPath(); ctx.arc(sx, sy, 3.2, 0, 6.283); ctx.fill();
+      if (outfitKey === 'shield') {
+        // ঢালধারীর পরিচয়ই এই বিরাট ঢাল — দূর থেকেই পড়া যায়
+        ctx.fillStyle = outfit.garment;
+        ctx.beginPath();
+        ctx.moveTo(sx - 17, sy - 21); ctx.lineTo(sx + 17, sy - 21); ctx.lineTo(sx + 17, sy + 7);
+        ctx.quadraticCurveTo(sx + 15, sy + 19, sx, sy + 26);
+        ctx.quadraticCurveTo(sx - 15, sy + 19, sx - 17, sy + 7); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = outfit.trim; ctx.lineWidth = 2.4; ctx.stroke();
+        ctx.strokeStyle = outfit.shade; ctx.lineWidth = 2;
+        for (const dy of [-11, -1, 9]) { ctx.beginPath(); ctx.moveTo(sx - 15, sy + dy); ctx.lineTo(sx + 15, sy + dy); ctx.stroke(); }
+        ctx.fillStyle = outfit.trim; ctx.font = '800 13px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.fillText('■', sx, sy + 3); ctx.textAlign = 'left';
+      } else if (outfitKey === 'boss') {
+        ctx.fillStyle = outfit.garment;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy - 23); ctx.lineTo(sx + 16, sy - 9); ctx.lineTo(sx, sy + 26); ctx.lineTo(sx - 16, sy - 9); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = outfit.trim; ctx.lineWidth = 2.4; ctx.stroke();
+        ctx.fillStyle = outfit.sash; ctx.beginPath(); ctx.arc(sx, sy - 2, 4.4, 0, 6.283); ctx.fill();
+        ctx.strokeStyle = outfit.trim; ctx.lineWidth = 1.4; ctx.stroke();
+      } else {
+        ctx.fillStyle = outfit.garment;
+        ctx.beginPath(); ctx.arc(sx, sy, r, 0, 6.283); ctx.fill();
+        ctx.strokeStyle = outfit.trim; ctx.lineWidth = 2; ctx.stroke();
+        ctx.strokeStyle = outfit.shade; ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(sx, sy, r * 0.66, 0, 6.283); ctx.stroke();
+        ctx.fillStyle = outfit.trim;
+        ctx.beginPath(); ctx.arc(sx, sy, 3.2, 0, 6.283); ctx.fill();
+      }
       if (f.guard < 34 && f.kind !== 'hero') {   // ফাটল: ঢাল ভাঙার কাছাকাছি
         ctx.strokeStyle = 'rgba(10,8,6,.8)'; ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.moveTo(sx - 4, sy - r + 3); ctx.lineTo(sx + 1, sy - 2); ctx.lineTo(sx - 3, sy + 6); ctx.stroke();
       }
     }
     // সামনের হাত + অস্ত্র
-    const front = seg2(ctx, at(sh, 0) + 3, at(sh, 1), -0.5 + p.armF, 18, 10.8, ink, rim);
+    ctx.fillStyle = SKIN; ctx.beginPath(); ctx.arc(at(back, 0), at(back, 1), 3.6, 0, 6.283); ctx.fill();
+    if (outfitKey === 'swift') limb(ctx, at(back, 0), at(back, 1), 2.65 + p.armB * 0.4, 17, 2.8, '#f6eeda');   // জোড়া ছোরার দ্বিতীয়টা
+    const front = seg2(ctx, at(sh, 0) + 3, at(sh, 1), -0.5 + p.armF, 18, 10.8 * outfit.build, garment, outline);
+    ctx.fillStyle = SKIN; ctx.beginPath(); ctx.arc(at(front, 0), at(front, 1), 3.8, 0, 6.283); ctx.fill();
     this.swoosh(ctx, f, at(front, 0), at(front, 1), p);
     this.weapon(ctx, f, at(front, 0), at(front, 1), p, P, tick);
 
-    // মাথা + মাথার ঢাকা (ধরনভেদে)
-    ctx.fillStyle = ink;
+    // মাথা: ত্বক + ধরনভেদে একেবারে আলাদা মাথার ঢাকা
+    ctx.fillStyle = hurtFlash ? '#fff3d6' : SKIN;
     ctx.beginPath(); ctx.arc(p.lean * 8, headY, 10.4, 0, 6.283); ctx.fill();
-    ctx.strokeStyle = rim; ctx.lineWidth = 1.7; ctx.stroke();
+    ctx.strokeStyle = outline; ctx.lineWidth = 1.7; ctx.stroke();
     const hx = p.lean * 8;
-    ctx.fillStyle = ink;
-    if (role === 'hero') {
-      ctx.beginPath(); ctx.ellipse(hx, headY - 7.4, 8.4, 4.8, 0, Math.PI, 0); ctx.fill();
-      ctx.fillRect(hx - 8.4, headY - 7.6, 16.8, 2.8);
-      ctx.fillStyle = '#e8b93e'; ctx.fillRect(hx - 1.2, headY - 13.4, 2.4, 4.4);   // সোনালি চূড়া
-    } else if (f.kind === 'boss') {
-      ctx.beginPath(); ctx.ellipse(hx, headY - 7, 9.6, 6.2, 0, Math.PI, 0); ctx.fill();
-      ctx.fillStyle = '#e8b93e';
-      ctx.beginPath(); ctx.moveTo(hx, headY - 20); ctx.lineTo(hx + 3, headY - 11); ctx.lineTo(hx - 3, headY - 11); ctx.closePath(); ctx.fill();
-    } else if (role === 'ally' || f.kind === 'swift') {
-      ctx.beginPath(); ctx.moveTo(hx - 9, headY - 4);
-      ctx.quadraticCurveTo(hx, headY - 13, hx + 9, headY - 4);
-      ctx.lineTo(hx + 12 + p.cloth * 4, headY + 5); ctx.closePath(); ctx.fill();
-    } else {
-      ctx.beginPath(); ctx.moveTo(hx - 10, headY - 2);
-      ctx.quadraticCurveTo(hx - 1, headY - 16 - p.cloth * 3, hx + 10, headY - 1);
-      ctx.closePath(); ctx.fill();
-    }
+    ctx.fillStyle = '#1c120a'; ctx.beginPath(); ctx.arc(hx + 4.2, headY - 0.5, 1.25, 0, 6.283); ctx.fill();   // চোখ
+    this.headgear(ctx, outfitKey, outfit, hx, headY, p);
     if (isActive(MOVES.guard, f.frame) && f.phase === 'guard') {
       ctx.globalAlpha = 0.55 * fade;
       ctx.strokeStyle = '#cfe6ef'; ctx.lineWidth = 2.4;
@@ -831,6 +913,13 @@ export class Renderer {
 
     // মাথার ওপরের সূচকসমূহ (ক্যামেরা-স্থিরাংকে)
     const topY = baseY - 124 * depth * bossScale;
+    if (role === 'hero' && f.alive) {
+      const bob = this.opts.reduceMotion ? 0 : Math.sin(tick / 9) * 2.2;
+      ctx.font = '800 16px system-ui, sans-serif'; ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(8,7,6,.88)'; ctx.fillText('▼', f.x + 1.4, topY - 8 + bob + 1.4);
+      ctx.fillStyle = '#ffd777'; ctx.fillText('▼', f.x, topY - 8 + bob);
+      ctx.textAlign = 'left';
+    }
     if (f.telegraph > 0) {
       const bounce = this.opts.reduceMotion ? 0 : Math.abs(Math.sin(tick / 4)) * 3;
       ctx.font = '800 21px system-ui, sans-serif'; ctx.textAlign = 'center';
@@ -854,6 +943,122 @@ export class Renderer {
         ctx.fillStyle = '#7ec3e8'; ctx.fillRect(f.x - bw / 2 + 1, topY - 4.6, (bw - 2) * Math.max(0, f.guard / 100), 3);
       }
     }
+  }
+
+
+  /** বুকের নকশা: সেলাই, পট্টি, বোতাম, পদক — রঙ না বুঝলেও আকৃতি দেখে ধরন চেনা যায়। */
+  private outfitDetails(ctx: CanvasRenderingContext2D, key: EnemyKind, outfit: Outfit, leanX: number, chestY: number, hipY: number, skirt: number): void {
+    const mid = leanX + 1;
+    ctx.save(); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    // গলার খোলা অংশ
+    ctx.fillStyle = SKIN;
+    ctx.beginPath(); ctx.moveTo(mid - 4, chestY - 2); ctx.lineTo(mid + 4, chestY - 2); ctx.lineTo(mid, chestY + 6); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = outfit.trim; ctx.lineWidth = 1.5;
+    if (key === 'hero') {
+      ctx.strokeStyle = outfit.sash; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(mid - 9, chestY + 2); ctx.lineTo(mid + 7, hipY); ctx.stroke();
+      ctx.fillStyle = outfit.head;
+      for (let i = 0; i < 3; i++) { ctx.beginPath(); ctx.arc(mid - 4 + i * 4.4, chestY + 9 + i * 7.5, 1.5, 0, 6.283); ctx.fill(); }
+    } else if (key === 'blade') {
+      ctx.fillStyle = outfit.shade; ctx.fillRect(mid - 12, chestY + 10, 24, 4.4); ctx.fillRect(mid - 12, chestY + 20, 24, 3.6);
+      ctx.strokeStyle = outfit.trim; ctx.lineWidth = 2.4;
+      ctx.beginPath(); ctx.moveTo(mid - 11, hipY); ctx.lineTo(mid + 10, chestY + 4); ctx.stroke();
+    } else if (key === 'shield') {
+      ctx.strokeStyle = outfit.shade; ctx.lineWidth = 1.7;
+      for (let x = -10; x <= 10; x += 5) { ctx.beginPath(); ctx.moveTo(mid + x, chestY + 3); ctx.lineTo(mid + x, hipY + Math.min(10, skirt)); ctx.stroke(); }
+      ctx.strokeStyle = outfit.trim; ctx.beginPath(); ctx.moveTo(mid - 13, chestY + 16); ctx.lineTo(mid + 13, chestY + 16); ctx.stroke();
+      ctx.fillStyle = outfit.head;
+      for (const dx of [-13, 13]) { ctx.beginPath(); ctx.ellipse(mid + dx, chestY + 1, 6.4, 4.6, 0, 0, 6.283); ctx.fill(); }
+    } else if (key === 'spear') {
+      ctx.strokeStyle = outfit.trim; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(mid, chestY + 4); ctx.lineTo(mid, hipY + skirt - 4); ctx.stroke();
+      ctx.fillStyle = outfit.trim;
+      for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.arc(mid, chestY + 10 + i * 7, 1.4, 0, 6.283); ctx.fill(); }
+      ctx.strokeStyle = outfit.shade; ctx.beginPath(); ctx.moveTo(mid - 7, hipY + 3); ctx.lineTo(mid - 9, hipY + skirt - 3); ctx.stroke();
+    } else if (key === 'swift') {
+      ctx.fillStyle = '#f2c14e';
+      ctx.beginPath(); ctx.moveTo(mid - 8, chestY + 2); ctx.lineTo(mid + 8, chestY + 2); ctx.lineTo(mid + 3, hipY); ctx.lineTo(mid - 3, hipY); ctx.closePath(); ctx.fill();   // খোলা ফতুয়ার ভেতরের জামা
+      ctx.strokeStyle = outfit.trim; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(mid - 8, chestY + 2); ctx.lineTo(mid - 3, hipY); ctx.moveTo(mid + 8, chestY + 2); ctx.lineTo(mid + 3, hipY); ctx.stroke();
+    } else if (key === 'boss') {
+      ctx.strokeStyle = outfit.trim; ctx.lineWidth = 2.2;
+      ctx.beginPath(); ctx.moveTo(mid, chestY + 5); ctx.lineTo(mid - 11, hipY + 1); ctx.moveTo(mid, chestY + 5); ctx.lineTo(mid + 11, hipY + 1); ctx.stroke();
+      ctx.fillStyle = outfit.sash; ctx.beginPath(); ctx.arc(mid, chestY + 13, 4.4, 0, 6.283); ctx.fill();
+      ctx.strokeStyle = outfit.trim; ctx.lineWidth = 1.6; ctx.stroke();
+      ctx.fillStyle = outfit.head;
+      for (const dx of [-14, 14]) { ctx.beginPath(); ctx.ellipse(mid + dx, chestY + 1, 7.2, 5.2, 0, 0, 6.283); ctx.fill(); }
+    } else {
+      ctx.fillStyle = outfit.shade;
+      ctx.beginPath(); ctx.moveTo(mid - 13, chestY); ctx.lineTo(mid - 3, chestY + 4); ctx.lineTo(mid - 4, hipY + 2); ctx.lineTo(mid - 12, hipY + 2); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(mid + 13, chestY); ctx.lineTo(mid + 3, chestY + 4); ctx.lineTo(mid + 4, hipY + 2); ctx.lineTo(mid + 12, hipY + 2); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = outfit.trim; ctx.lineWidth = 2.6;
+      ctx.beginPath(); ctx.moveTo(mid - 11, chestY + 4); ctx.lineTo(mid + 5, chestY + 20); ctx.stroke();   // কাঁধের গামছা
+    }
+    // বুকের প্রতীক-পদক
+    const by = chestY + (key === 'boss' ? 24 : 15);
+    ctx.fillStyle = mix(outfit.shade, '#000000', 0.2);
+    ctx.beginPath(); ctx.arc(mid, by, 6.2, 0, 6.283); ctx.fill();
+    ctx.strokeStyle = outfit.trim; ctx.lineWidth = 1.4; ctx.stroke();
+    ctx.fillStyle = outfit.trim; ctx.font = '800 8px system-ui, sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(outfit.badge, mid, by + 2.8);
+    ctx.textAlign = 'left'; ctx.restore();
+  }
+
+  /** মাথার ঢাকা: পাগড়ি / মাথাবাঁধা / শিরস্ত্রাণ / উঁচু টুপি / স্কার্ফ / মুকুট / খড়ের টুপি। */
+  private headgear(ctx: CanvasRenderingContext2D, key: EnemyKind, outfit: Outfit, hx: number, headY: number, p: Pose): void {
+    ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    const dark = mix(outfit.shade, '#000000', 0.4);
+    if (key === 'hero') {
+      ctx.fillStyle = outfit.head;
+      ctx.beginPath(); ctx.ellipse(hx, headY - 7.6, 9.4, 5.4, -0.08, Math.PI, 0); ctx.fill();
+      ctx.fillRect(hx - 9.4, headY - 8.2, 18.8, 3.4);
+      ctx.strokeStyle = '#fff3c4'; ctx.lineWidth = 1.7;
+      ctx.beginPath(); ctx.moveTo(hx - 8, headY - 8); ctx.quadraticCurveTo(hx, headY - 13.4, hx + 8, headY - 8); ctx.stroke();
+      ctx.strokeStyle = outfit.sash; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(hx + 2, headY - 12); ctx.quadraticCurveTo(hx - 2, headY - 19, hx - 8 - p.cloth * 3, headY - 21); ctx.stroke();   // লাল পালক
+      ctx.fillStyle = outfit.sash; ctx.beginPath(); ctx.arc(hx + 6.4, headY - 7, 2.2, 0, 6.283); ctx.fill();
+    } else if (key === 'blade') {
+      ctx.fillStyle = outfit.head;
+      ctx.beginPath(); ctx.ellipse(hx, headY - 6.6, 9.6, 5, 0, Math.PI, 0); ctx.fill();
+      ctx.fillRect(hx - 9.8, headY - 7.2, 19.6, 3.2);
+      ctx.strokeStyle = outfit.trim; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(hx - 9.8, headY - 5.6); ctx.lineTo(hx + 9.8, headY - 5.6); ctx.stroke();
+      ctx.fillStyle = outfit.head;
+      ctx.beginPath(); ctx.moveTo(hx - 9, headY - 6); ctx.lineTo(hx - 15 - p.cloth * 4, headY + 4); ctx.lineTo(hx - 7, headY + 3); ctx.closePath(); ctx.fill();   // গিঁটের ঝুল
+    } else if (key === 'shield') {
+      ctx.fillStyle = outfit.head;
+      ctx.beginPath(); ctx.ellipse(hx, headY - 5.8, 10.2, 7.4, 0, Math.PI, 0); ctx.fill();
+      ctx.strokeStyle = dark; ctx.lineWidth = 1.5; ctx.stroke();
+      ctx.fillRect(hx - 11.4, headY - 6.4, 22.8, 3);
+      ctx.beginPath(); ctx.moveTo(hx, headY - 19); ctx.lineTo(hx + 2.6, headY - 11); ctx.lineTo(hx - 2.6, headY - 11); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = '#eef3f5'; ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(hx - 6, headY - 10); ctx.lineTo(hx + 5, headY - 10.6); ctx.stroke();
+    } else if (key === 'spear') {
+      ctx.fillStyle = outfit.head;
+      ctx.beginPath(); ctx.moveTo(hx - 8.6, headY - 5); ctx.lineTo(hx + 1, headY - 24); ctx.lineTo(hx + 8.8, headY - 5); ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = dark; ctx.lineWidth = 1.4; ctx.stroke();
+      ctx.fillStyle = outfit.trim; ctx.fillRect(hx - 9.2, headY - 7.4, 18.4, 3);
+      ctx.beginPath(); ctx.arc(hx + 1, headY - 24, 2, 0, 6.283); ctx.fill();
+    } else if (key === 'swift') {
+      ctx.fillStyle = outfit.head;
+      for (const [dx, dy, w] of [[-8, -13, 5], [-2, -17, 6], [5, -14, 5]] as const) {
+        ctx.beginPath(); ctx.moveTo(hx + dx - w / 2, headY - 6); ctx.lineTo(hx + dx - 2 - p.cloth * 2, headY + dy); ctx.lineTo(hx + dx + w / 2, headY - 6); ctx.closePath(); ctx.fill();
+      }
+      ctx.fillRect(hx - 9, headY - 7.2, 18, 3);
+      ctx.strokeStyle = outfit.trim; ctx.lineWidth = 4;
+      ctx.beginPath(); ctx.moveTo(hx - 7, headY + 8.6); ctx.lineTo(hx + 7, headY + 8.6); ctx.stroke();   // গলার স্কার্ফ
+    } else if (key === 'boss') {
+      ctx.fillStyle = '#241335'; ctx.beginPath(); ctx.ellipse(hx, headY - 6.8, 10.4, 5.8, 0, Math.PI, 0); ctx.fill();
+      ctx.fillStyle = outfit.head; ctx.fillRect(hx - 10.2, headY - 11.6, 20.4, 4.2);
+      for (const dx of [-7.4, 0, 7.4]) { ctx.beginPath(); ctx.moveTo(hx + dx, headY - (dx === 0 ? 22 : 18)); ctx.lineTo(hx + dx + 3, headY - 11); ctx.lineTo(hx + dx - 3, headY - 11); ctx.closePath(); ctx.fill(); }
+      ctx.strokeStyle = outfit.sash; ctx.lineWidth = 3.2;
+      ctx.beginPath(); ctx.moveTo(hx, headY - 21); ctx.quadraticCurveTo(hx - 5, headY - 27, hx - 11 - p.cloth * 3, headY - 26); ctx.stroke();
+      ctx.fillStyle = outfit.sash; ctx.beginPath(); ctx.arc(hx, headY - 9.4, 2.4, 0, 6.283); ctx.fill();
+    } else {
+      ctx.fillStyle = outfit.head;
+      ctx.beginPath(); ctx.ellipse(hx, headY - 5.4, 16.4, 4.2, -0.04, 0, 6.283); ctx.fill();   // খড়ের টুপির চওড়া কানা
+      ctx.strokeStyle = '#a57f2f'; ctx.lineWidth = 1.4; ctx.stroke();
+      ctx.beginPath(); ctx.ellipse(hx, headY - 7.8, 8, 5.4, 0, Math.PI, 0); ctx.fill(); ctx.stroke();
+    }
+    ctx.restore();
   }
 
   /** তলোয়ারের ঝাপটা: সক্রিয় ফ্রেমে চাপ-আকৃতির আলোক-রেখা। */
@@ -888,6 +1093,26 @@ export class Renderer {
   private weapon(ctx: CanvasRenderingContext2D, f: Fighter, hx: number, hy: number, p: Pose, P: Palette, tick: number): void {
     const steel = this.opts.colorblind ? '#ffffff' : '#f6eeda';
     const glow = f.telegraph > 0 ? '#ff8a5c' : steel;
+    const outfit = OUTFITS[f.kind];
+    if (f.kind === 'ally') {
+      // মিত্র কৃষকের লাঠি — তলোয়ার নয়, তাই দলও গুলিয়ে যায় না
+      const ang = p.sword * 0.65;
+      const tip = limb(ctx, hx, hy, ang, outfit.weaponLen, 4.2, '#8a613c');
+      limb(ctx, hx, hy, ang + Math.PI, 24, 4.2, '#74512f');
+      ctx.fillStyle = '#a87c48'; ctx.beginPath(); ctx.arc(at(tip, 0), at(tip, 1), 3.4, 0, 6.283); ctx.fill();
+      return;
+    }
+    if (f.kind === 'shield') {
+      // ঢালধারীর হাতে খাটো গদা
+      const tip = limb(ctx, hx, hy, p.sword, outfit.weaponLen, 4, '#5d4632');
+      ctx.fillStyle = glow; ctx.beginPath(); ctx.arc(at(tip, 0), at(tip, 1), 7, 0, 6.283); ctx.fill();
+      ctx.strokeStyle = '#6f7478'; ctx.lineWidth = 1.6; ctx.stroke();
+      for (let i = 0; i < 6; i++) {
+        const a = i * 1.047;
+        limb(ctx, at(tip, 0), at(tip, 1), a, 10, 1.7, glow);
+      }
+      return;
+    }
     if (f.kind === 'spear') {
       const ang = f.move?.id === 'thrust' ? -0.06 : p.sword * 0.55;
       const tip = limb(ctx, hx, hy, ang, 62, 3, '#5d4632');
@@ -899,7 +1124,7 @@ export class Renderer {
       return;
     }
     const bladeAng = p.sword;
-    const bl = limb(ctx, hx, hy, bladeAng, 38, 3.4, glow);
+    const bl = limb(ctx, hx, hy, bladeAng, outfit.weaponLen, f.kind === 'boss' ? 4.8 : f.kind === 'swift' ? 2.8 : 3.4, glow);
     const curved = f.move === null || (f.move.id !== 'thrust' && f.move.id !== 'guard');
     const nx = Math.cos(bladeAng + Math.PI / 2), ny = Math.sin(bladeAng + Math.PI / 2);
     const mx = (hx + at(bl, 0)) / 2 + nx * 8, my = (hy + at(bl, 1)) / 2 + ny * 8;
@@ -907,7 +1132,7 @@ export class Renderer {
       ctx.fillStyle = glow; ctx.beginPath();
       ctx.moveTo(hx, hy);
       ctx.quadraticCurveTo(mx, my, at(bl, 0), at(bl, 1));
-      ctx.quadraticCurveTo(mx - nx * 4.4, my - ny * 4.4, hx, hy);
+      ctx.quadraticCurveTo(mx - nx * (f.kind === 'boss' ? 6.8 : 4.4), my - ny * (f.kind === 'boss' ? 6.8 : 4.4), hx, hy);
       ctx.closePath(); ctx.fill();
     }
     // সংকল্পে ফলকে আগুন-আভা
@@ -915,7 +1140,12 @@ export class Renderer {
       ctx.strokeStyle = `rgba(255,183,71,${0.55 + Math.sin(tick / 3) * 0.2})`; ctx.lineWidth = 6;
       ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(at(bl, 0), at(bl, 1)); ctx.stroke();
     }
-    limb(ctx, hx, hy, bladeAng + Math.PI, 7, 4.4, P.accent);
+    if (f.kind === 'hero') {
+      ctx.strokeStyle = '#e8b93e'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(hx + Math.cos(bladeAng) * 5, hy + Math.sin(bladeAng) * 5);
+      ctx.quadraticCurveTo(mx - nx * 1.5, my - ny * 1.5, at(bl, 0) - Math.cos(bladeAng) * 6, at(bl, 1) - Math.sin(bladeAng) * 6); ctx.stroke();
+    }
+    limb(ctx, hx, hy, bladeAng + Math.PI, 7, 4.4, outfit.sash);
     ctx.fillStyle = '#ffd777';
     ctx.beginPath(); ctx.arc(hx - Math.cos(bladeAng) * 7, hy - Math.sin(bladeAng) * 7, 2.6, 0, 6.283); ctx.fill();
   }

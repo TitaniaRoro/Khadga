@@ -105,7 +105,7 @@ function installDom(): { body: El; byId: Map<string, El>; frameCbs: ((t: number)
   }
   const stick = byId.get('stick') ?? new El('div');
   const knob = new El('span'); knob.classList.add('knob'); stick.appendChild(knob);
-  for (const act of ['start', 'back', 'again', 'next', 'pause', 'resume', 'copySave', 'pasteSave', 'music', 'gentle', 'teacher', 'reduce', 'cb', 'fontUp', 'fontDown']) {
+  for (const act of ['start', 'back', 'again', 'next', 'pause', 'resume', 'copySave', 'pasteSave', 'music', 'sound', 'soundBtn', 'soundGate', 'soundTest', 'gentle', 'teacher', 'reduce', 'cb', 'pixel', 'fullscreen', 'fontUp', 'fontDown']) {
     const b = new El('button'); b.dataset.act = act; body.appendChild(b); app.appendChild(b);
   }
   const frameCbs: ((t: number) => void)[] = [];
@@ -156,12 +156,20 @@ test('boot → title → অধ্যায় ১-এর ঢেউ: ৩০০ �
   const game = (globalThis as unknown as { window: { khadga?: { scene: string } } }).window.khadga
     ?? (globalThis as unknown as { khadga?: never }).khadga;
   const g = (globalThis as never as { window: Record<string, unknown> }).window['khadga'] as {
-    scene: string; sim: unknown; startChapter(ch: unknown, mode: 'wave'): void;
+    scene: string; sim: unknown; startChapter(ch: unknown, mode: 'wave'): void; openChapter(id: number): void;
     doc: { chapters: { id: number }[] }; progress: { read: string[] };
     input: { inject(p: null | 'cut' | 'guard', mx?: number, my?: number, a?: null | 0 | 1 | 2 | 3): void };
   } | undefined;
   assert.ok(g, 'window.khadga সেট হয়নি — boot ভেঙে গেছে');
   assert.equal(g!.scene, 'title');
+  assert.ok(dom.byId.get('soundGate')?.innerHTML.includes('শব্দ চালু করো'), 'টাইটেলে বড় শব্দ-চালুর ফটক নেই');
+  assert.ok(dom.byId.get('soundTop')?.textContent.includes('শব্দ'), 'উপরের শব্দ-বোতাম বন্ধ অবস্থা বোঝায় না');
+  g!.openChapter(1);
+  const brief = dom.byId.get('read')?.innerHTML ?? '';
+  assert.ok(brief.includes('class="roster"'), 'মিশন-ব্রিফে পোশাক-পরিচিতি নেই');
+  for (const label of ['তুমি — খড়্গধারী', 'ঢালধারী শত্রু', 'লম্বা বর্শা', 'দ্রুতগামী শত্রু', 'মিথের প্রহরী']) {
+    assert.ok(brief.includes(label), `পোশাক-পরিচিতিতে নেই: ${label}`);
+  }
   const ch1 = (g!.doc.chapters as { id: number }[]).find((c) => c.id === 1)!;
   g!.startChapter(ch1 as never, 'wave');
   assert.ok(g!.sim, 'সিম তৈরি হয়নি');
@@ -220,6 +228,11 @@ test('আধুনিক আর্কেড-রূপ: HD ডিফল্ট, �
   assert.match(html, /data-act="pixel"/, 'পিক্সেল মোড বন্ধ-চালুর টগল না থাকলে শৈলী চাপিয়ে দেওয়া হয়');
   assert.match(html, /data-act="endless"/, 'অসীম ঢেউ মোডের প্রবেশপথ');
   assert.match(html, /data-act="rush"/, 'সত্য-দৌড় মোডের প্রবেশপথ');
+  assert.match(html, /id="soundGate"[^>]+data-act="soundGate"/, 'প্রথম পর্দায় শব্দ চালুর স্পষ্ট ফটক');
+  assert.match(html, /id="soundTop"[^>]+data-act="sound"/, 'সবসময় দেখা যায় এমন শব্দ-বোতাম');
+  assert.match(html, /data-act="soundTest"/, 'সেটিংসে শব্দ-পরীক্ষার বোতাম');
+  assert.match(css, /\.sound-gate\{/, 'শব্দ-ফটকের রূপ');
+  assert.match(css, /\.roster\{/, 'পোশাক-পরিচিতির রূপ');
 });
 
 test('বিল্ড পৌঁছোয়: SW-ক্যাশ-নাম = অ্যাসেট-?v = বিল্ড-ছাপ, আর প্রিক্যাচ নেটওয়ার্ক থেকে', { ...PRE }, () => {
