@@ -146,3 +146,6 @@ button:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,.55);
   background: radial-gradient(120% 92% at 50% 46%, transparent 58%, rgba(6,5,4,.42) 100%);
 }
 @media (prefers-reduced-motion: reduce) { #app::after { display: none; } }
+
+/* বিল্ড-ছাপ: ক্যাশ-সমস্যায় 'কিছু বদলায়নি' মনে হলে এটা দেখেই বোঝা যায় */
+#buildstamp { font-variant-numeric: tabular-nums; letter-spacing: .04em; color: rgba(240,230,207,.45); font-size: .8em; }
