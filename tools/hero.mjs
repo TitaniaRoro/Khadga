@@ -34,12 +34,11 @@ const BN = { 0: '০', 1: '১', 2: '২', 3: '৩', 4: '৪', 5: '৫', 6: '৬
 const bn = (s) => String(s).replace(/[0-9]/g, (d) => BN[Number(d)] ?? d);
 
 /** @napi-rs/canvas-কে ব্রাউজার-ভাস-এর মতো সাজানো (Renderer এগুলোই ছুঁয়)। */
-globalThis.window = { devicePixelRatio: 2 };
+globalThis.window = { devicePixelRatio: 1 };
 function gameCanvas(sim, chapterId, ticks, policy) {
-  const cv = createCanvas(380, 180);   // পিক্সেল মোড: ব্যাকিং-স্টোর অর্ধেক, তাই এখানেও ৩৮০×১৮
+  const cv = createCanvas(760, 360);   // আধুনিক ডিফল্ট HD-রূপই এখন খেলার আসল চেহারা
   cv.getBoundingClientRect = () => ({ width: 760, height: 360, top: 0, left: 0 });
-  cv.imageSmoothingEnabled = false;
-  const r = new Renderer(cv, { reduceMotion: false, colorblind: false, palette: PALETTES[chapterId], pixel: true });
+  const r = new Renderer(cv, { reduceMotion: false, colorblind: false, palette: PALETTES[chapterId], pixel: false });
   let best = null, bestScore = -1;
   for (let t = 0; t < ticks; t++) {
     policy(sim, t);
@@ -50,7 +49,9 @@ function gameCanvas(sim, chapterId, ticks, policy) {
     const swing = sim.player.move && sim.player.move.id ? 1 : 0;
     const brk = sim.enemies.some((e) => e.guard < 62 || e.phase === 'stunned') ? 1 : 0;
     const near = sim.player.x > 210 && sim.player.x < 550 ? 3 : 0;   // মাঝির দিকে থাকলে কম্পোজিশন ভালো
-    const score = act * 3 + swing * 2 + brk * 4 + near + (sim.over ? 1 : 0) + t / 4000;
+    // বোনাস: স্ক্রল-পিকআপ বা টানা-আঘাত থাকলে সেই ফ্রেমই নতুন খেলার আসল গল্প বলে
+    const pk = sim.pickups.length ? 3 : 0;
+    const score = act * 3 + swing * 2 + brk * 4 + near + pk + sim.combo * 0.4 + (sim.over ? 1 : 0) + t / 4000;
     if (score > bestScore) { bestScore = score; best = cv.toBuffer('image/png'); }
   }
   return { buf: best, sim };
@@ -108,7 +109,7 @@ async function compose(W, H, file, label) {
     x.fillStyle = 'rgba(240,230,207,.55)'; x.font = `400 ${Math.round(H * 0.028)}px NotoBn400`;
     x.textAlign = 'right'; x.fillText(cap, ox + cellW - 2, capBase); x.textAlign = 'left';  // fillText-এর ৩য় আর্গুমেন্ট maxWidth, options নয়
     x.save(); x.beginPath(); x.rect(ox, fy, cellW, cellH); x.clip();
-    x.imageSmoothingEnabled = false;   // পিক্সেল-আর্কেড: বড় করা nearest, রেশমি নয়
+    x.imageSmoothingEnabled = true;   // HD-ফ্রেম: মসৃণ প্রসারণ
     x.drawImage(imgs[i], ox - (dw - cellW) / 2, fy + dy, dw, dh);
     x.restore();
     x.strokeStyle = 'rgba(240,230,207,.18)'; x.lineWidth = 1;

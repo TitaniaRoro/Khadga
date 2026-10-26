@@ -178,10 +178,10 @@ test('boot → title → অধ্যায় ১-এর ঢেউ: ৩০০ �
   assert.ok(clock && /[:০-৯]/.test(clock.textContent), 'HUD-ঘড়ি লেখেনি');
   const tbar = dom.byId.get('tbar');
   assert.ok(tbar && tbar.innerHTML.includes('ঢেউ'), 'ঢেউ-ফলক ভরাট হয়নি');
-  // পিক্সেল-আর্কেড: আঁকা হয় অর্ধ-রেজ্যোলিউশনে (৩৮×১৮০), বড় হয় CSS-এ
+  // আধুনিক ডিফল্ট রূপ: পূর্ণ-রেজ্যোলিউশন ব্যাকিং-স্টোর (পিক্সেল-রূপ এখন ঐচ্ছিক টগল)
   const stage = dom.byId.get('stage')!;
-  assert.equal(stage.width, 380, 'পিক্সেল মোডে ক্যানভাসের ব্যাকিং-স্টোর ৩৮×১৮০ হওয়ার কথা');
-  assert.equal(stage.height, 180);
+  assert.equal(stage.width, 760, 'আধুনিক রূপে ক্যানভাস পূর্ণ ৭৬০×৩৬০ হওয়ার কথা');
+  assert.equal(stage.height, 360);
 });
 
 test('কোনো id দ্বন্দ্ব নেই: index.html-এর id-গুলো অদ্বিতীয়', { ...PRE }, () => {
@@ -210,11 +210,14 @@ test('UI-তে English শব্দ নেই — দেখা-লেখা শ
   assert.deepEqual(words.filter((w) => !allowed.has(w)), [], `লেখা-মাঝে English: ${words.join(', ')}`);
 });
 
-test('আর্কেড-রূপ: পিক্সেল-প্রসারণ, CRT-টগল, সমতল-ভাঙা HUD', { ...PRE }, () => {
+test('আধুনিক আর্কেড-রূপ: HD ডিফল্ট, পিক্সেল টগল, মোড-হাব ও প্রশ্ন-ঘড়ি', { ...PRE }, () => {
   const css = readFileSync(new URL('../docs/styles.css', import.meta.url), 'utf8');
-  assert.match(css, /#stage\s*\{[^}]*image-rendering:\s*pixelated/, 'ক্যানভাস nearest-neighbour-এ বড় হওয়া দরকার (নইলে পিক্সেল মোড ঝাপসা)');
-  assert.match(css, /border-radius:\s*0/, 'আর্কেড-ফ্রেম: নরম গোল কোণ বাদ');
-  assert.match(css, /#app::after[\s\S]*radial-gradient/, 'ভিনিয়েট (গভীরতার জন্য)');
+  assert.match(css, /body\.pixel #stage\{[^}]*image-rendering:\s*pixelated/, 'পিক্সেল-রূপে nearest-neighbour (নইলে ঝাপসা)');
+  assert.match(css, /#stagebox\{[^}]*box-shadow/, 'মাঠের চারপাশে গভীরতা/আভা — সমতল কার্ড নয়');
+  assert.match(css, /\.mode\.primary/, 'মোড-কার্ডের প্রধান রূপ');
+  assert.match(css, /#qbar \.qtime/, 'প্রশ্নের ঘড়ি-পটি (পড়ার সময় দেখা যায়)');
   const html = readFileSync(HTML, 'utf8');
   assert.match(html, /data-act="pixel"/, 'পিক্সেল মোড বন্ধ-চালুর টগল না থাকলে শৈলী চাপিয়ে দেওয়া হয়');
+  assert.match(html, /data-act="endless"/, 'অসীম ঢেউ মোডের প্রবেশপথ');
+  assert.match(html, /data-act="rush"/, 'সত্য-দৌড় মোডের প্রবেশপথ');
 });

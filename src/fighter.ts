@@ -12,6 +12,11 @@ import {
 
 export type Phase = 'idle' | 'attack' | 'guard' | 'side' | 'hitstun' | 'blockstun' | 'stunned' | 'downed';
 
+/** শত্রুর ধরন — একই ফ্রেম-টেবিল, আলাদা মেজাজ/পাল্লা/শরীর (আর্কেডের বৈচিত্র্য এখান থেকেই)। */
+export type EnemyKind = 'blade' | 'shield' | 'spear' | 'swift' | 'boss' | 'hero' | 'ally';
+
+let UID = 1;
+
 export interface FighterInit {
   name_bn: string;
   /** ০ = বাঁ-দিকে মুখ, ১ = ডানদিকে। */
@@ -22,6 +27,7 @@ export interface FighterInit {
   tone: string;
   /** প্রতিপক্ষের আঘাতে ক্ষতির গুণক — বস-ভেদে পাল্টায় (design §3.১)। */
   defense: number;
+  kind?: EnemyKind;
 }
 
 export interface HitEvent {
@@ -31,11 +37,16 @@ export interface HitEvent {
   dmg: number;
   /** সংকল্প-আঘাতের সঙ্গে যে তথ্য-লাইন ভেসে ওঠে (কার্ডের `bn`-এর প্রথম বাক্য)। */
   banner?: string;
+  /** লক্ষ্যের অবস্থান — একই নামের একাধিক শত্রু থাকলেও ক্ষতি-সংখ্যা ঠিক জায়গায় ওঠে। */
+  x: number;
+  y: number;
 }
 
 export class Fighter {
+  readonly uid = UID++;
   readonly name_bn: string;
   readonly tone: string;
+  readonly kind: EnemyKind;
   facing: 0 | 1;
   x: number;
   y: number;
@@ -66,6 +77,25 @@ export class Fighter {
   buffered: InputName | null = null;
   /** ঢেউ-লড়াইয়ে শত্রুর বিকল্প লক্ষ্য: নৌকা/ধানের গাড়ি (player নয়)। */
   targetObjective = false;
+  /** আক্রমণের আগে সতর্ক-ঝলক (ফ্রেম বাকি) — খেলোয়াড় পড়তে পারে, তাই parry/সরে যাওয়া অর্থ পায়। */
+  telegraph = 0;
+  pendingMove: InputName | null = null;
+  /** পরের আক্রমণের আগে বিরতি — দলবদ্ধ stunlock ঠেকাতে। */
+  attackCooldown = 0;
+  /** শেষ আঘাত খাওয়ার পর কেটে যাওয়া ফ্রেম — সাদা ঝলক ও খেলোয়াড়ের grace এখান থেকে। */
+  hurtAge = 999;
+  graceMax = 0;
+  /** এক সুইংয়ে কাদের মারা হয়েছে (cleave-এ একই জনকে বারবার নয়)। */
+  swingHits = new Set<number>();
+  swingHitObjective = false;
+  /** কাটা-শৃঙ্খল: পরপর কাটা জমলে তৃতীয়টা ফিনিশার (রেন্ডারেও ভঙ্গি বদলায়)। */
+  chain = 0;
+  chainTimer = 0;
+  /** পড়ে যাওয়ার পর কেটে যাওয়া ফ্রেম — ধুলোয় মিলিয়ে যাওয়ার অ্যানিমেশন। */
+  deadAge = 0;
+  /** হাঁটার গতি-গুণক (ধরনভেদে) ও পাল্লা-গুণক (বর্শাধারী)। */
+  speedMul = 1;
+  reachMul = 1;
 
   constructor(init: FighterInit) {
     this.name_bn = init.name_bn;
@@ -74,6 +104,7 @@ export class Fighter {
     this.x = init.x;
     this.y = init.y;
     this.defense = init.defense;
+    this.kind = init.kind ?? 'blade';
   }
 
   get alive(): boolean { return this.hp > 0; }
@@ -83,6 +114,7 @@ export class Fighter {
   }
   get guarding(): boolean { return this.phase === 'guard'; }
   get invulnerable(): boolean {
+    if (this.graceMax > 0 && this.hurtAge < this.graceMax && this.phase !== 'downed') return true;
     if (this.move === null) return false;
     if (this.phase === 'side') return this.frame < this.move.iframes + this.move.startup;
     if (this.phase === 'attack' && this.move.id === 'resolve') return this.frame <= this.move.iframes;
@@ -105,7 +137,13 @@ export class Fighter {
     this.move = m;
     this.frame = 0;
     this.guardAge = 0;
+    this.swingHits.clear();
+    this.swingHitObjective = false;
+    this.telegraph = 0;
+    this.pendingMove = null;
     this.vx = m.lunge * (this.facing === 1 ? 1 : -1);
+    // সবে = আসল ড্যাশ: মুখের দিকে ঝাঁকুনি-বেগ (আগে জায়গায় দাঁড়িয়ে 'অছোঁয়া' হতো শুধু)
+    if (input === 'side') this.vx = 7.5 * (this.facing === 1 ? 1 : -1);
     return true;
   }
 
@@ -114,7 +152,10 @@ export class Fighter {
     this.x += this.vx;
     this.vx *= 0.86;
     if (Math.abs(this.vx) < 0.05) this.vx = 0;
-    this.x += this.vx * 0;
+    this.hurtAge += 1;
+    if (this.attackCooldown > 0) this.attackCooldown -= 1;
+    if (this.chainTimer > 0) { this.chainTimer -= 1; if (this.chainTimer === 0) this.chain = 0; }
+    if (this.phase === 'downed') this.deadAge += 1;
 
     if (this.phase === 'hitstun' || this.phase === 'blockstun' || this.phase === 'stunned') {
       this.stunLeft -= 1;
@@ -144,14 +185,14 @@ export class Fighter {
     if (m === null) return null;
     if (this.phase !== 'attack') return null;
     if (!isActive(m, this.frame)) return null;
-    return { reach: m.reach, dmg: m.dmg, guardDmg: m.guardDmg, high: m.high, kind: m.id };
+    return { reach: Math.round(m.reach * this.reachMul), dmg: m.dmg, guardDmg: m.guardDmg, high: m.high, kind: m.id };
   }
 
   /** প্রতিপক্ষের আঘাত লাগলো — ঢাল/parry/প্রহারের ভাগ এখানেই। */
   receive(att: { reach: number; dmg: number; guardDmg: number; high: boolean; kind: InputName }, attacker: Fighter): HitEvent {
     const raw = att.dmg * this.defense;
     if (this.invulnerable) {
-      return { kind: 'whiff', by: attacker.name_bn, on: this.name_bn, dmg: 0 };
+      return { kind: 'whiff', by: attacker.name_bn, on: this.name_bn, dmg: 0, x: this.x, y: this.y };
     }
     if (this.guarding && this.move !== null) {
       // নিখুঁত রোধ: রোধ শুরুর PARRY_WINDOW ফ্রেমের ভেতর এলে প্রতিউত্তর-সুযোগ।
@@ -161,7 +202,7 @@ export class Fighter {
         attacker.stun(GUARD_BREAK_STUN - 12);
         this.guard = Math.min(MAX_GUARD, this.guard + 6);
         this.meter = Math.min(100, this.meter + 12);
-        return { kind: 'parry', by: attacker.name_bn, on: this.name_bn, dmg: 0 };
+        return { kind: 'parry', by: attacker.name_bn, on: this.name_bn, dmg: 0, x: this.x, y: this.y };
       }
       this.guard -= att.guardDmg;
       this.phase = 'blockstun';
@@ -171,31 +212,34 @@ export class Fighter {
         this.guard = 0;
         this.phase = 'stunned';
         this.stunLeft = GUARD_BREAK_STUN;
-        return { kind: 'guardbreak', by: attacker.name_bn, on: this.name_bn, dmg: 0 };
+        return { kind: 'guardbreak', by: attacker.name_bn, on: this.name_bn, dmg: 0, x: this.x, y: this.y };
       }
       this.chipAge = 0;   // চাপ চলতে থাকলে ঢাল ফেরে না — নাহলে ঢাল ভাঙা অসম্ভব
-      return { kind: 'block', by: attacker.name_bn, on: this.name_bn, dmg: Math.round(raw * 0.12) };
+      return { kind: 'block', by: attacker.name_bn, on: this.name_bn, dmg: Math.round(raw * 0.12), x: this.x, y: this.y };
     }
+    this.hurtAge = 0;
     this.hp = Math.max(this.hpFloor, this.hp - Math.round(raw));
     // ঢাল-শোষণ: 'ঢাল ভাঙো' যেন প্রতিপক্ষের এলোমেলো ব্লক-ভাগ্যের জালে না পড়ে।
     // দ্বন্দ্বের বসে ০.৪৫ বসানো — তাই টানা চাপে ঢাল ভাঙে, ব্লক না করলেও।
     if (this.guardSoak > 0 && this.guard > 0) {
+      this.chipAge = 0;   // টানা চাপে ঢাল ফিরতে পারে না — এই লাইনটা না থাকায় কোপের ক্ষয় regen খেয়ে ফেলত
       this.guard = Math.max(0, this.guard - Math.round(MOVES[att.kind].guardDmg * this.guardSoak));
       if (this.guard <= 0) {
         this.phase = 'stunned'; this.stunLeft = GUARD_BREAK_STUN; this.move = null; this.frame = 0;
-        return { kind: 'guardbreak', by: attacker.name_bn, on: this.name_bn, dmg: 0 };
+        return { kind: 'guardbreak', by: attacker.name_bn, on: this.name_bn, dmg: 0, x: this.x, y: this.y };
       }
     }
     this.phase = 'hitstun';
     this.stunLeft = MOVES[att.kind].hitstun;
     this.move = null; this.frame = 0; this.guardAge = 0;
     this.vx = MOVES[att.kind].knockback * (att.reach > 0 ? (attacker.facing === 1 ? 0.5 : -0.5) : 0);
+    this.telegraph = 0; this.pendingMove = null;
     if (att.kind === 'resolve') {
       const banner = attacker.takeResolveBanner();
-      return { kind: 'resolve', by: attacker.name_bn, on: this.name_bn, dmg: Math.round(raw), banner: banner ?? undefined };
+      return { kind: 'resolve', by: attacker.name_bn, on: this.name_bn, dmg: Math.round(raw), banner: banner ?? undefined, x: this.x, y: this.y };
     }
     if (this.hp <= 0) { this.phase = 'downed'; this.stunLeft = 9999; }
-    return { kind: 'hit', by: attacker.name_bn, on: this.name_bn, dmg: Math.round(raw) };
+    return { kind: 'hit', by: attacker.name_bn, on: this.name_bn, dmg: Math.round(raw), x: this.x, y: this.y };
   }
 
   stun(frames: number): void {
@@ -207,7 +251,7 @@ export class Fighter {
   /** আঘাত মেলেনি — খালি-কোপের খরচ (মিটার বাড়ে না)। */
   whiff(): void { this.meter = Math.max(0, this.meter - 1); }
 
-  awardMeter(n: number): void { this.meter = Math.min(100, this.meter + n); }
+  awardMeter(n: number): void { this.meter = Math.max(0, Math.min(100, this.meter + n)); }
   heal(n: number): void { this.hp = Math.min(MAX_HP, this.hp + n); }
   refillGuard(n: number): void { this.guard = Math.min(MAX_GUARD, this.guard + n); }
   /** সংকল্প-আঘাতের ক্ষতি-গুণক কার্ডের সূত্র-নির্ভরযোগ্যতা থেকে (sim.ts বসায়)। */
