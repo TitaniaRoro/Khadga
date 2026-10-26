@@ -288,3 +288,7 @@ button.ok{background:var(--good)!important;color:#101a0f!important}
   .brief-head{flex-direction:column;gap:2px}
 }
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* বিল্ড-ছাপ: ক্যাশ-সমস্যায় 'কিছু বদলায়নি' মনে হলে এটা দেখেই বোঝা যায় */
+.buildline{text-align:center}
+#buildstamp{font-variant-numeric:tabular-nums;letter-spacing:.04em;color:rgba(240,230,207,.45);font-size:.8em}

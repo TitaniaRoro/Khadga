@@ -40,9 +40,23 @@ mkdirSync(join(out, 'fonts'), { recursive: true });
 // build শেষে সতর্কতা হিসেবে বলা হয় (CI ভাঙানোর মতো ব্যাপার নয়)।
 if (existsSync(join(root, 'assets/og.png'))) copyFileSync(join(root, 'assets/og.png'), join(out, 'og.png'));
 
+// রিভিশন = ইনপুট-সোর্সের কনটেন্ট-হ্যাশ (আকার নয়) — অ্যাসেট-URL, বিল্ড-ছাপ আর
+// SW-ক্যাশের নাম, তিন জায়গাতেই একই সংখ্যা বসে (define-এর আগেই হিসাব করতে হয়)।
+const srcFiles = [];
+const walk = (dir) => {
+  for (const e of readdirSync(join(root, dir), { withFileTypes: true })) {
+    const rel = join(dir, e.name);
+    if (e.isDirectory()) walk(rel); else if (/\.(ts|css|json|html|js)$/.test(e.name)) srcFiles.push(rel);
+  }
+};
+for (const d of ['src', 'web', 'content']) walk(d);
+const REV = createHash('sha1').update(srcFiles.map((f) => f + readFileSync(join(root, f)).length).join('|')).digest('hex').slice(0, 10);
+const REV_NUM = String(parseInt(REV.slice(0, 6), 16) % 1000000).padStart(6, '0');
+
 // ১) বান্ডেল
 const t0 = Date.now();
 const res = await build({
+  define: { __KHADGA_REV__: JSON.stringify(REV_NUM), __KHADGA_REV_HASH__: JSON.stringify(REV) },
   entryPoints: [join(root, 'src', 'main.ts')],
   outfile: join(out, 'app.js'),
   bundle: true, minify: true, format: 'esm', target: 'es2022',
@@ -78,18 +92,64 @@ for (const f of fonts) {
 }
 writeFileSync(join(out, 'fonts.css'), faceLines.join('\n'), 'utf8');
 
-// ৪) Service Worker — নিজে থেকেই লেখা (cozy-cache = none), প্রিক্যাচ-লিস্ট বিল্ড থেকেই আসে
-const files = ['index.html', 'app.js', 'styles.css', 'fonts.css', 'content/chapters.json',
-  ...readFileSync(join(out, 'fonts.css'), 'utf8').match(/fonts\/[\w.-]+/g)];
-const manifest = [...new Set(files)];
-const hash = createHash('sha1').update(manifest.map((f) => f + statSync(join(out, f)).size).join('|')).digest('hex').slice(0, 10);
-writeFileSync(join(out, 'sw.js'), `/* খড়্গ — হাতে-লেখা Service Worker (বিল্ড-উৎপন্ন, হাতে বদলো না) */
-const C='khadga-${hash}';
-const P=${JSON.stringify(manifest)};
-addEventListener('install',(e)=>{e.waitUntil(caches.open(C).then((c)=>c.addAll(P)).then(()=>self.skipWaiting()))});
-addEventListener('activate',(e)=>{e.waitUntil(caches.keys().then((k)=>Promise.all(k.filter((x)=>x!==C).map((x)=>caches.delete(x)))).then(()=>self.clients.claim()))});
-addEventListener('fetch',(e)=>{const u=new URL(e.request.url);if(u.origin!==location.origin||e.request.method!=='GET')return;
-e.respondWith(caches.match(e.request).then((r)=>r||fetch(e.request).then((n)=>{if(n.ok&&u.pathname.endsWith('/index.html')||n.ok){const c=n.clone();caches.open(C).then((x)=>x.put(e.request,c));}return n;}).catch(()=>caches.match('index.html'))));});
+// ৪) রিভিশন + Service Worker
+//
+// রিভিশন = ইনপুট-সোর্সের *কনটেন্ট*-হ্যাশ (আকার নয়!)। অ্যাসেট-URL-এ ?v=, সোশ্যাল-ছবিতে
+// নয়, অ্যাপের বিল্ড-ছাপে, আর SW-ক্যাশের নামে — চার জায়গায় একই সংখ্যা।
+//
+// কেন লাগলো: আগের SW-এর fetch-হ্যান্ডলার cache-first ছিল, আর install-এর `addAll`
+// সেই হ্যান্ডলার দিয়েই নেটওয়ার্কে যেত — মানে নতুন বিল্ড প্রিক্যাচ করতে গিয়ে **পুরোনো
+// বাইটই নতুন ক্যাশে বসত**। Deploy সফল হওয়ার পরেও খেলোয়াড় চিরকাল আগের খেলা দেখত
+// (ব্যবহারকারীর রিপোর্ট: "কোনো উন্নতি দেখছি না")। সমাধান: শেল-এ নেটওয়ার্ক-আগে,
+// স্থায়ী অ্যাসেটে ক্যাশ-আগে, আর রিভিশন বদলালে পুরো ক্যাশ-নাম বদলায়।
+
+// index.html-এর অ্যাসেট-ঠিকানায় ?v= (Pages অ্যাসেটে max-age=600 পাঠায় → ছাড়া হলে ১০ মিনিট ধরে থাকে)
+{
+  const p = join(out, 'index.html');
+  let html = readFileSync(p, 'utf8');
+  for (const a of ['app.js', 'styles.css', 'fonts.css']) {
+    const re = new RegExp(`((?:src|href)=")${a}(")`, 'g');
+    html = html.replace(re, `$1${a}?v=${REV}$2`);
+  }
+  writeFileSync(p, html.replace('<meta name="viewport"', `<meta name="build" content="${REV_NUM}">\n<meta name="viewport"`), 'utf8');
+}
+
+const shell = ['index.html', `app.js?v=${REV}`, `styles.css?v=${REV}`, `fonts.css?v=${REV}`];
+const immutable = ['content/chapters.json', ...readFileSync(join(out, 'fonts.css'), 'utf8').match(/fonts\/[\w.-]+/g)];
+const manifest = [...new Set([...shell, ...immutable])];
+writeFileSync(join(out, 'sw.js'), `/* খড়্গ — Service Worker (বিল্ড-উৎপন্ন, হাতে বদলো না) · রিভিশন ${REV} */
+const C = 'khadga-${REV}';
+const SHELL = ${JSON.stringify(shell)};
+const P = ${JSON.stringify(manifest)};
+
+addEventListener('install', (e) => {
+  // নেটওয়ার্ক থেকেই নিই — ক্যাশ-পড়া ফেচ-হ্যান্ডলার নিজেই এখানে পুরোনো বাইট ঢুকিয়ে দিত
+  e.waitUntil(caches.open(C).then((c) => Promise.all(P.map((u) => fetch(u, { cache: 'reload' }).then((r) => c.put(u, r))))).then(() => self.skipWaiting()));
+});
+addEventListener('activate', (e) => {
+  e.waitUntil(caches.keys().then((k) => Promise.all(k.filter((x) => x !== C).map((x) => caches.delete(x)))).then(() => self.clients.claim()));
+});
+addEventListener('fetch', (e) => {
+  const u = new URL(e.request.url);
+  if (u.origin !== location.origin || e.request.method !== 'GET') return;
+  // '…/Khadga/' → '' আসে, সেটাই আসল index.html — ভুলে গেলে নেভিগেশন ক্যাশ-আগে পুরোনো
+  // বিল্ড ফেরত দিত (যে সমস্যার সমাধান করছি, ঠিক সেটাই)।
+  const base = location.pathname.replace(/[^/]*$/, '');
+  let key = u.pathname.replace(base, '') + u.search;
+  if (key === '' || key === '.' || key === './' || key === '/') key = 'index.html';
+  const isShell = SHELL.indexOf(key) >= 0 || key === 'index.html' || key === 'sw.js';
+  if (isShell) {
+    // শেল: নেটওয়ার্ক-আগে — নতুন বিল্ড দেখা যাবে, নেটওয়ার্ক না থাকলে তবেই ক্যাশ
+    e.respondWith(
+      fetch(e.request, { cache: 'no-store' })
+        .then((n) => { const cl = n.clone(); caches.open(C).then((c) => c.put(key, cl)); return n; })
+        .catch(() => caches.match(key).then((r) => r || caches.match('index.html')))
+    );
+    return;
+  }
+  // স্থায়ী অ্যাসেট (ফন্ট, কনটেন্ট): ক্যাশ-আগে — ক্যাশ-নাম-ই রিভিশন-বদলে পাল্টায়
+  e.respondWith(caches.match(e.request).then((r) => r || fetch(e.request).then((n) => { if (n.ok) { const cl = n.clone(); caches.open(C).then((c) => c.put(e.request, cl)); } return n; })));
+});
 `, 'utf8');
 
 // ৫) আকার-হিসাব

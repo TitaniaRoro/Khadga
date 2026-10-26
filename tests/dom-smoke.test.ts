@@ -221,3 +221,18 @@ test('আধুনিক আর্কেড-রূপ: HD ডিফল্ট, �
   assert.match(html, /data-act="endless"/, 'অসীম ঢেউ মোডের প্রবেশপথ');
   assert.match(html, /data-act="rush"/, 'সত্য-দৌড় মোডের প্রবেশপথ');
 });
+
+test('বিল্ড পৌঁছোয়: SW-ক্যাশ-নাম = অ্যাসেট-?v = বিল্ড-ছাপ, আর প্রিক্যাচ নেটওয়ার্ক থেকে', { ...PRE }, () => {
+  const sw = readFileSync(new URL('../docs/sw.js', import.meta.url), 'utf8');
+  const html = readFileSync(HTML, 'utf8');
+  const cache = sw.match(/const C = 'khadga-([0-9a-f]{10})'/)?.[1] ?? '';
+  assert.ok(cache, 'SW-ক্যাশের নামে রিভিশন-হ্যাশ থাকতে হবে (নাহলে পুরোনো ক্যাশ চিরস্থায়ী)');
+  assert.equal(html.includes(`app.js?v=${cache}`), true, 'index.html-এর app.js-ঠিকানা একই রিভিশনে বাঁধা');
+  assert.match(sw, /fetch\(u, \{ cache: 'reload' \}\)/, "প্রিক্যাচ নেটওয়ার্ক থেকে পড়বে — নিজের ক্যাশ-হ্যান্ডলার দিয়ে নয় (পুরোনো বাইট ঢোকার পথ)");
+  assert.match(sw, /cache: 'no-store'/, 'শেল নেটওয়ার্ক-আগে: নতুন বিল্ড সঙ্গে সঙ্গে দেখা যাবে');
+  const main = readFileSync(new URL('../src/main.ts', import.meta.url), 'utf8');
+  assert.match(main, /updateViaCache: 'none'/, 'sw.js-নিজেকে HTTP-ক্যাশ থেকে বাঁচাতে হবে');
+  assert.match(main, /buildstamp/, 'বিল্ড-ছাপ UI-তে দেখানো হয় (ক্যাশ-সন্দেহে এটাই প্রথম চোখ-দেখা প্রমাণ)');
+  assert.match(sw, /caches\.delete/, 'পুরোনো রিভিশনের ক্যাশ মুছে যায়');
+  assert.match(sw, /key === '' \|\| key === '\.' \|\| key === '\.\/' \|\| key === '\/'/, 'মূল-ঠিকানা (\/Khadga\/) index.html-এ ম্যাপ করতে হবে, নাহলে নেভিগেশনই ক্যাশ-আটকানো থাকত');
+});
