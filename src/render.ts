@@ -7,8 +7,8 @@
  *  · ডিফল্ট রূপ এখন পূর্ণ-রেজ্যোলিউশন HD (অর্ধ-রেজ পিক্সেল-রূপ টগলে অপশন);
  *  · চরিত্র মোটা-গড়া ভরা আকৃতি, হাঁটার চক্র, তলোয়ারের ঝাপটা-রেখা (swoosh),
  *    ধরনভেদে অস্ত্র/ঢাল/শরির (ঢালধারী, বর্শাধারী, দ্রুতগামী, বস);
- *  · ৪-তলা দৃশ্য: আকাশ (সূর্য, মেঘ, পাখি) → দূরের আকাশরেখা → কাছের স্থাপত্য
- *    (আলো-জানালা, পতাকা) → সামনের ঘাস/খাগড়া; ক্যামেরা-দোলন ও ঝাঁকুনি;
+ *  · ৪-তলা দৃশ্য: আকাশ (সূর্য, মেঘ, পাখি) → দিগন্তে দূরের বড় গাছ → খোলা
+ *    সবুজ মাঠ → সামনের ছোট গাছপালা; নির্বাচিত জায়গায় সরু নদী, সঙ্গে ক্যামেরা-দোলন ও ঝাঁকুনি;
  *  · কণা-ব্যবস্থা: ধুলো, ঝিলিক, টুকরো, ভাসা ধুলিকণা; hit-flash, ড্যাশ-ভূতছায়া।
  *
  * ইমেজ-ভিত্তিক ফ্রেম দরকার হলে এই এক ইন্টারফেস বদলেই ৩D→স্প্রাইট বেক বসবে —
@@ -21,7 +21,7 @@ import type { Sim } from './sim.ts';
 export interface ViewOpts {
   reduceMotion: boolean;
   colorblind: boolean;
-  /** অধ্যায়-ভিত্তিক রঙ (মাটি/নদী/ইট/সোনালি) — স্থাপত্য-অনুপ্রেরণা, ছবি নয়। */
+  /** অধ্যায়-ভিত্তিক রঙ — খোলা মাঠের সবুজে মিশে থাকে, ছবি নয়। */
   palette: Palette;
   /** পিক্সেল-আর্কেড মোড (ঐচ্ছিক স্মৃতি-রূপ): ব্যাকিং-স্টোর অর্ধেক + CRT ছায়া। */
   pixel?: boolean;
@@ -278,13 +278,14 @@ export class Renderer {
       this.shake *= 0.82;
     }
     ctx.translate(-this.camX * 0.35, 0);
-    ctx.save(); ctx.globalAlpha = 0.4;
-    this.backdrop(sim, P, tick, 0.45, mix(P.sky, P.ink, 0.5));
+    // কিছু অধ্যায়ে নদীটি দিগন্তের কাছাকাছি দেখা যায় — খেলার মাঠ খোলা থাকে।
+    if ([0, 2, 6, 7, 8].includes(sim.ch.id)) this.water(sim.ch.id, tick);
+    ctx.save(); ctx.globalAlpha = 0.44;
+    this.backdrop(sim, tick, 0.45, mix('#789b62', P.sky, 0.2));
     ctx.restore();
     this.groundPlane(sim, P, tick);
     ctx.translate(-this.camX * 0.65, 0);
-    this.backdrop(sim, P, tick, 1, mix(P.ink, P.ground, 0.3));
-    if (sim.ch.id === 0 || sim.ch.id >= 6) this.water(P, tick);
+    this.backdrop(sim, tick, 1, mix('#315d38', P.ground, 0.16));
 
     if (sim.objective) this.objectiveDraw(sim, P, tick);
     for (const pk of sim.pickups) this.pickupDraw(pk.x, GROUND + pk.y * 0.5, pk.life, pk.seed, P, tick);
@@ -351,96 +352,154 @@ export class Renderer {
         ctx.quadraticCurveTo(bx + 2, by - 3, bx + 7, by + flap); ctx.stroke();
       }
     }
-    // দূরের পাহাড়-রেখা
-    ctx.fillStyle = mix(P.sky, P.ink, 0.26);
-    ctx.beginPath(); ctx.moveTo(0, GROUND);
-    for (let x = 0; x <= W; x += 56) ctx.lineTo(x, GROUND - 20 - Math.sin(x * 0.008 + sim.ch.id * 1.7) * 13 - Math.sin(x * 0.0021 + 2) * 8);
-    ctx.lineTo(W, GROUND); ctx.closePath(); ctx.fill();
+    // আকাশ আর খেলার মাঠের মাঝে নরম, নিচু ঘাসের দিগন্ত — পাহাড় বা শহরের দেয়াল নয়।
+    ctx.fillStyle = 'rgba(107,151,83,.22)';
+    ctx.beginPath(); ctx.moveTo(0, GROUND - 15);
+    for (let x = 0; x <= W; x += 48) {
+      const ridge = GROUND - 17 - Math.sin(x * 0.006 + sim.ch.id * 1.7) * 4 - Math.sin(x * 0.0021 + 2) * 3;
+      ctx.lineTo(x, ridge);
+    }
+    ctx.lineTo(W, GROUND); ctx.lineTo(0, GROUND); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(238,227,170,.12)';
+    ctx.fillRect(0, GROUND - 24, W, 12);
   }
 
   private groundPlane(sim: Sim, P: Palette, tick: number): void {
     const { ctx } = this;
-    ctx.fillStyle = this.linear(GROUND, H, [[0, mix(P.ground, '#ffe3ae', 0.13)], [0.35, P.ground], [1, mix(P.ground, '#000000', 0.62)]]);
+    ctx.fillStyle = this.linear(GROUND, H, [
+      [0, mix('#9bad60', P.ground, 0.2)],
+      [0.34, mix('#6f914d', P.ground, 0.16)],
+      [1, mix('#315a36', P.ground, 0.2)],
+    ]);
     ctx.fillRect(-60, GROUND, W + 160, H - GROUND + 10);
-    // লড়াইয়ের পাটাতন: হালকা ডিম্ব-মঞ্চ → চরিত্ররা ভাসে না, মঞ্চে বসে
-    ctx.fillStyle = 'rgba(255,240,200,.07)';
-    ctx.beginPath(); ctx.ellipse(W / 2, GROUND + 40, 450, 58, 0, 0, 6.283); ctx.fill();
-    ctx.strokeStyle = 'rgba(255,240,200,.13)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.ellipse(W / 2, GROUND + 40, 450, 58, 0, 0.2, Math.PI - 0.2); ctx.stroke();
-    // দৃষ্টি-রেখা ও মাটির দানা (স্থির হ্যাশে)
-    ctx.strokeStyle = 'rgba(0,0,0,.16)'; ctx.lineWidth = 1;
-    for (const [oy, a] of [[10, 0.5], [26, 0.36], [48, 0.26], [76, 0.18]] as const) {
-      ctx.globalAlpha = a; ctx.beginPath(); ctx.moveTo(-40, GROUND + oy); ctx.lineTo(W + 80, GROUND + oy); ctx.stroke();
-    }
-    ctx.globalAlpha = 1;
-    ctx.fillStyle = 'rgba(255,244,210,.16)';
-    for (let i = 0; i < 46; i++) {
-      const gx = ((hash(i * 3 + 1) * (W + 120) - (sim.player.x * 0.08) % 60) + W + 120) % (W + 120) - 60;
-      const gy = GROUND + 6 + hash(i * 5 + 2) * (H - GROUND - 16);
-      ctx.fillRect(gx, gy, 2 + hash(i) * 4, 1.6);
-    }
-    void tick;
-  }
 
-  private water(P: Palette, tick: number): void {
-    const { ctx } = this;
-    ctx.fillStyle = 'rgba(150,220,240,.15)';
-    ctx.fillRect(-40, GROUND + 30, W + 120, 30);
-    ctx.strokeStyle = 'rgba(220,245,255,.4)'; ctx.lineWidth = 1.4;
-    for (let r = 0; r < 3; r++) {
+    // মাঠের নরম ঢেউ—মঞ্চের ডিম্বাকার দাগ বা শহরের পাথর-রেখা নয়।
+    ctx.save(); ctx.lineWidth = 9; ctx.lineCap = 'round';
+    for (const [offset, alpha] of [[15, 0.07], [39, 0.055], [67, 0.04]] as const) {
+      ctx.strokeStyle = `rgba(210,218,137,${alpha})`;
       ctx.beginPath();
-      for (let x = -20; x <= W + 40; x += 16) {
-        const y = GROUND + 38 + r * 8 + Math.sin((x + tick * (this.opts.reduceMotion ? 0 : 1.2)) / 22 + r * 2) * 1.8;
-        if (x === -20) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      for (let x = -60; x <= W + 80; x += 36) {
+        const y = GROUND + offset + Math.sin(x * 0.008 + sim.ch.id) * 2.4 + Math.sin(x * 0.002 + offset) * 1.8;
+        if (x === -60) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
       ctx.stroke();
     }
-    ctx.fillStyle = mix(P.accent, '#ffffff', 0.3);
+    ctx.restore();
+
+    // ঘাসের রঙে হালকা এলোমেলো ছোপ—একই বীজে একই জায়গায় থাকে।
+    for (let i = 0; i < 15; i++) {
+      const span = W + 150;
+      const raw = hash(i * 19 + 5) * span - sim.player.x * 0.08;
+      const x = ((raw % span) + span) % span - 70;
+      const y = GROUND + 12 + hash(i * 31 + 9) * (H - GROUND - 20);
+      ctx.fillStyle = i % 2 ? 'rgba(190,196,111,.07)' : 'rgba(36,83,45,.07)';
+      ctx.beginPath(); ctx.ellipse(x, y, 14 + hash(i * 7) * 27, 2 + hash(i * 11) * 4, 0, 0, 6.283); ctx.fill();
+    }
+
+    // দূরত্ব অনুযায়ী ছোট হয়ে আসা বুনো ঘাস আর মাঠের গাছপালা।
+    for (let i = 0; i < 30; i++) {
+      const span = W + 120;
+      const raw = hash(i * 3 + 1) * span - sim.player.x * 0.1;
+      const x = ((raw % span) + span) % span - 60;
+      const y = GROUND + 7 + hash(i * 5 + 2) * (H - GROUND - 12);
+      const depth = (y - GROUND) / (H - GROUND);
+      this.plant(ctx, x, y, 5 + depth * 8, i + sim.ch.id * 37, tick, P);
+    }
   }
 
-  private backdrop(sim: Sim, P: Palette, tick: number, depth: number, color: string): void {
+  private plant(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, seed: number, tick: number, P: Palette): void {
+    const sway = this.opts.reduceMotion ? 0 : Math.sin((tick + seed * 11) / 22) * size * 0.075;
+    const stem = seed % 2 === 0 ? mix('#547b3e', P.ground, 0.12) : mix('#73934a', P.ground, 0.12);
+    ctx.save(); ctx.lineCap = 'round';
+    for (let i = -1; i <= 1; i++) {
+      const height = size * (0.58 + hash(seed * 7 + i + 2) * 0.42);
+      const tipX = x + i * size * 0.42 + sway;
+      const tipY = y - height;
+      ctx.strokeStyle = stem; ctx.lineWidth = Math.max(0.8, size * 0.1);
+      ctx.beginPath(); ctx.moveTo(x + i * size * 0.08, y);
+      ctx.quadraticCurveTo(x + i * size * 0.28 + sway * 0.45, y - height * 0.55, tipX, tipY); ctx.stroke();
+      ctx.fillStyle = i === 0 ? 'rgba(175,197,105,.8)' : 'rgba(133,171,79,.78)';
+      ctx.beginPath(); ctx.ellipse(tipX - i * size * 0.13, tipY + size * 0.11, size * 0.2, size * 0.075, i * 0.6, 0, 6.283); ctx.fill();
+    }
+    if (hash(seed * 13 + 3) > 0.72) {
+      ctx.fillStyle = 'rgba(248,220,151,.82)'; ctx.beginPath(); ctx.arc(x + sway, y - size * 0.82, Math.max(0.8, size * 0.08), 0, 6.283); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  private water(chapterId: number, tick: number): void {
     const { ctx } = this;
-    const id = sim.ch.id;
-    const drift = (tick * 0.05 * depth * (this.opts.reduceMotion ? 0 : 1) + sim.player.x * 0.05 * depth) % 108;
-    if (depth < 1) { ctx.translate(0, 20 * (1 - depth)); ctx.scale(1, 0.85); }
-    ctx.fillStyle = color;
-    for (let i = -1; i < 8; i++) {
-      const x = 40 + i * 108 - drift;
-      switch (true) {
-        case id === 0: this.chala(ctx, x, 244, 78, 48); break;
-        case id <= 2: this.arch(ctx, x + 12, 244, 52, 96); this.bar(ctx, x, 238, 80, 7); break;
-        case id === 3: this.domeRow(ctx, x, 218, 3, 20, 64); break;
-        case id === 4: this.domeRow(ctx, x - 6, 210, 5, 15, 94); this.bands(ctx, x - 6, 252, 94, 3); break;
-        case id === 5: this.battlement(ctx, x, 200, 88, 48, tick); this.arch(ctx, x + 20, 246, 42, 48); break;
-        case id === 6: this.battlement(ctx, x + 4, 206, 72, 42, tick); break;
-        case id === 7: this.dome(ctx, x + 30, 212, 27); this.bar(ctx, x + 4, 178, 8, 76); this.battlement(ctx, x + 44, 218, 42, 30, tick); break;
-        default: this.tree(ctx, x + 22, 240, 56); this.tree(ctx, x + 76, 242, 36); break;
+    const flow = this.opts.reduceMotion ? 0 : tick * 0.42;
+    const bend = chapterId * 0.73;
+    const centerY = (x: number): number => GROUND - 25 + Math.sin(x * 0.006 + bend) * 4.5 + Math.sin(x * 0.014 - bend) * 1.8;
+    const halfWidth = (x: number): number => 5.5 + Math.sin(x * 0.01 + bend) * 1.2;
+    const start = -40, end = W + 40, step = 16;
+
+    // সরু, আঁকাবাঁকা নদীটি দূরের জমির ফাঁকে দেখা যায়—যোদ্ধাদের পায়ের কাছে নয়।
+    ctx.save(); ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (let x = start; x <= end; x += step) {
+      const y = centerY(x) - halfWidth(x);
+      if (x === start) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    for (let x = end; x >= start; x -= step) ctx.lineTo(x, centerY(x) + halfWidth(x));
+    ctx.closePath(); ctx.fillStyle = 'rgba(65,147,162,.76)'; ctx.fill();
+
+    ctx.strokeStyle = 'rgba(222,207,150,.62)'; ctx.lineWidth = 2.3;
+    for (const edge of [-1, 1] as const) {
+      ctx.beginPath();
+      for (let x = start; x <= end; x += step) {
+        const y = centerY(x) + edge * halfWidth(x);
+        if (x === start) ctx.moveTo(x, y); else ctx.lineTo(x, y);
       }
-      // কাছের স্তরে আলো-জানালা: নগর জীবন্ত লাগে
-      if (depth === 1 && id >= 2 && id <= 7) {
-        ctx.save(); ctx.fillStyle = 'rgba(255,196,96,.75)';
-        for (let w = 0; w < 3; w++) {
-          if (hash(i * 31 + w * 7) > 0.45) ctx.fillRect(x + 12 + hash(i * 13 + w) * 58, 222 + w * 9, 3.4, 4.6);
+      ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(215,243,221,.58)'; ctx.lineWidth = 1.1;
+    for (let i = 0; i < 6; i++) {
+      const x = ((i * 137 + flow) % (W + 90)) - 40;
+      const y = centerY(x);
+      ctx.beginPath(); ctx.moveTo(x - 7, y); ctx.quadraticCurveTo(x, y - 1.2, x + 8, y + 0.4); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  private backdrop(sim: Sim, tick: number, depth: number, color: string): void {
+    const { ctx } = this;
+    const far = depth < 1;
+    const spacing = far ? 210 : 178;
+    const drift = (tick * 0.025 * depth * (this.opts.reduceMotion ? 0 : 1) + sim.player.x * 0.025 * depth) % spacing;
+    if (far) { ctx.translate(0, 20 * (1 - depth)); ctx.scale(1, 0.85); }
+
+    for (let i = -2; i < 7; i++) {
+      const x = 30 + i * spacing - drift;
+      const seed = (i + 19) * 31 + sim.ch.id * 59 + (far ? 0 : 1000);
+      if (far) {
+        // ফাঁক-ফাঁক বড় গাছ—দূরের সবুজ দিগন্ত, ঘন জঙ্গল নয়।
+        if (hash(seed) > 0.16) {
+          const h = 116 + hash(seed + 1) * 34;
+          const tx = x + (hash(seed + 2) - 0.5) * 18;
+          this.tree(ctx, tx, GROUND - 4, h, seed, tick, color);
+          if (hash(seed + 3) > 0.54) {
+            const side = hash(seed + 4) > 0.5 ? 1 : -1;
+            this.tree(ctx, tx + side * (42 + hash(seed + 5) * 18), GROUND - 7, h * (0.52 + hash(seed + 6) * 0.16), seed + 1, tick, color);
+          }
         }
-        ctx.restore(); ctx.fillStyle = color;
+        if (hash(seed + 8) > 0.72) this.bush(ctx, x + 90, GROUND - 5, 48, 18, color, seed + 8);
+      } else {
+        // কাছের দিগন্তে কেবল নিচু ঝোপ—খোলা মাঠ ও নদীর ফাঁক যেন ঢাকা না পড়ে।
+        if (hash(seed + 9) > 0.5) this.bush(ctx, x + 30, GROUND - 4, 38 + hash(seed + 10) * 24, 12 + hash(seed + 11) * 8, color, seed + 9);
+        if (hash(seed + 12) > 0.91) this.tree(ctx, x + 112, GROUND - 5, 76 + hash(seed + 13) * 16, seed + 12, tick, color);
       }
     }
   }
-  private arch(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
-    const path = (inset: number): void => {
-      const ix = x + inset, iw = w - inset * 2, ih = h - inset;
-      ctx.beginPath();
-      ctx.moveTo(ix, y); ctx.lineTo(ix, y - ih * 0.55);
-      ctx.quadraticCurveTo(ix + iw * 0.06, y - ih, ix + iw / 2, y - ih - ih * 0.1);
-      ctx.quadraticCurveTo(ix + iw * 0.94, y - ih, ix + iw, y - ih * 0.55);
-      ctx.lineTo(ix + iw, y); ctx.closePath();
-    };
-    path(0); ctx.fill();
-    ctx.save();
-    ctx.fillStyle = 'rgba(255,226,170,.16)';   // ভেতরের অবতল খিলান — দেওয়ালে গভীরতা
-    path(9); ctx.fill();
-    ctx.fillStyle = 'rgba(0,0,0,.18)';
-    path(15); ctx.fill();
+
+  private bush(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, color: string, seed: number): void {
+    ctx.save(); ctx.fillStyle = color;
+    ctx.beginPath(); ctx.ellipse(x, y - h * 0.42, w * 0.34, h * 0.52, 0, 0, 6.283); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x - w * 0.23, y - h * 0.31, w * 0.25, h * 0.43, 0, 0, 6.283); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + w * 0.22, y - h * 0.34, w * 0.27, h * 0.45, 0, 0, 6.283); ctx.fill();
+    ctx.fillStyle = 'rgba(193,207,126,.18)';
+    ctx.beginPath(); ctx.ellipse(x + (hash(seed) - 0.5) * w * 0.28, y - h * 0.68, w * 0.13, h * 0.16, 0, 0, 6.283); ctx.fill();
     ctx.restore();
   }
   private chala(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
@@ -451,49 +510,33 @@ export class Renderer {
     ctx.lineTo(x + w * 0.86, y - h * 0.16); ctx.lineTo(x + w * 0.14, y - h * 0.16);
     ctx.closePath(); ctx.fill();
   }
-  private domeRow(ctx: CanvasRenderingContext2D, x: number, y: number, n: number, r: number, w: number): void {
-    ctx.fillRect(x, y, w, 44);
-    const step = w / (n + 1);
-    for (let i = 0; i < n; i++) this.dome(ctx, x + step * (i + 1), y, r);
-    ctx.fillRect(x - 5, y - 15, 7, 59); ctx.fillRect(x + w - 2, y - 15, 7, 59);
-  }
-  private dome(ctx: CanvasRenderingContext2D, x: number, y: number, r: number): void {
-    ctx.beginPath();
-    ctx.moveTo(x - r, y);
-    ctx.quadraticCurveTo(x - r, y - r * 1.15, x, y - r * 1.45);
-    ctx.quadraticCurveTo(x + r, y - r * 1.15, x + r, y);
-    ctx.closePath(); ctx.fill();
-    ctx.fillRect(x - 1.2, y - r * 1.45 - 6, 2.4, 6);
-  }
-  private battlement(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, tick = 0): void {
-    ctx.fillRect(x, y, w, h);
-    for (let i = 0; i < 5; i++) ctx.fillRect(x + i * (w / 5), y - 9, w / 10, 9);
-    // বাতাসে দুলতে থাকা নিশানা
-    const fx = x + w / 2;
-    ctx.fillRect(fx - 1, y - 30, 2, 22);
-    const wave = this.opts.reduceMotion ? 0 : Math.sin((tick + x) / 7) * 3;
-    ctx.beginPath(); ctx.moveTo(fx + 1, y - 30); ctx.lineTo(fx + 17, y - 25 + wave); ctx.lineTo(fx + 1, y - 20); ctx.closePath(); ctx.fill();
-  }
-  private bar(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void { ctx.fillRect(x, y, w, h); }
-  private bands(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, n: number): void {
-    ctx.save(); ctx.globalAlpha = 0.5; ctx.fillStyle = 'rgba(255,235,200,.5)';
-    for (let i = 0; i < n; i++) ctx.fillRect(x + 3, y + 4 + i * 7, w - 6, 2);
-    ctx.restore();
-  }
-  private tree(ctx: CanvasRenderingContext2D, x: number, y: number, h: number): void {
+
+  private tree(ctx: CanvasRenderingContext2D, x: number, y: number, h: number, seed: number, tick: number, color: string): void {
     ctx.save();
-    const col = ctx.fillStyle as unknown as string;
-    ctx.strokeStyle = col; ctx.lineCap = 'round';
-    ctx.lineWidth = Math.max(5, h * 0.14);
-    ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + 2, y - h * 0.3, x, y - h * 0.52); ctx.stroke();
-    ctx.lineWidth = Math.max(3, h * 0.07);
-    ctx.beginPath(); ctx.moveTo(x, y - h * 0.42); ctx.lineTo(x - h * 0.3, y - h * 0.66); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(x, y - h * 0.46); ctx.lineTo(x + h * 0.32, y - h * 0.7); ctx.stroke();
-    ctx.fillStyle = col;
-    const cy = y - h * 0.72;
-    for (const [ox, oy, rx, ry] of [[0, 0, 0.52, 0.34], [-0.34, 0.1, 0.4, 0.27], [0.36, 0.08, 0.42, 0.28], [0.02, -0.22, 0.4, 0.26], [-0.16, 0.2, 0.44, 0.22]] as const) {
-      ctx.beginPath(); ctx.ellipse(x + ox * h, cy + oy * h, rx * h, ry * h, 0, 0, 6.283); ctx.fill();
+    const sway = this.opts.reduceMotion ? 0 : Math.sin((tick + seed * 7) / 31) * h * 0.008;
+    const crownY = y - h * 0.7;
+
+    // সরু বাদামি কাণ্ড আর ছড়ানো ডাল—দূরের বড় গাছের আকৃতি।
+    ctx.strokeStyle = 'rgba(93,72,43,.72)'; ctx.lineCap = 'round';
+    ctx.lineWidth = Math.max(2.4, h * 0.045);
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.quadraticCurveTo(x + sway * 0.2, y - h * 0.32, x + sway, crownY + h * 0.12); ctx.stroke();
+    ctx.lineWidth = Math.max(1.6, h * 0.025);
+    ctx.beginPath(); ctx.moveTo(x + sway * 0.4, crownY + h * 0.23); ctx.quadraticCurveTo(x - h * 0.15, crownY + h * 0.05, x - h * 0.3 + sway, crownY - h * 0.04); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(x + sway * 0.7, crownY + h * 0.16); ctx.quadraticCurveTo(x + h * 0.16, crownY - h * 0.02, x + h * 0.31 + sway, crownY - h * 0.12); ctx.stroke();
+
+    // গোল, ছড়ানো পাতার মুকুট; হালকা পাতার ছোপে সিলুয়েটটা একরঙা লাগে না।
+    ctx.fillStyle = color;
+    const leaves = [
+      [0, 0, 0.46, 0.27], [-0.34, 0.08, 0.34, 0.22], [0.35, 0.08, 0.36, 0.22],
+      [-0.17, -0.2, 0.33, 0.22], [0.17, -0.23, 0.34, 0.23], [0, -0.38, 0.25, 0.19],
+    ] as const;
+    for (const [ox, oy, rx, ry] of leaves) {
+      ctx.beginPath(); ctx.ellipse(x + ox * h + sway, crownY + oy * h, rx * h, ry * h, 0, 0, 6.283); ctx.fill();
     }
+    ctx.save(); ctx.globalAlpha *= 0.17; ctx.fillStyle = '#d8df9a';
+    ctx.beginPath(); ctx.ellipse(x - h * 0.13 + sway, crownY - h * 0.2, h * 0.2, h * 0.08, -0.16, 0, 6.283); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(x + h * 0.18 + sway, crownY + h * 0.02, h * 0.16, h * 0.06, 0.12, 0, 6.283); ctx.fill();
+    ctx.restore();
     ctx.restore();
   }
 
@@ -688,20 +731,26 @@ export class Renderer {
 
   private foreground(sim: Sim, P: Palette, tick: number): void {
     const { ctx } = this;
-    const drift = (sim.player.x * 0.18 + tick * 0.03 * (this.opts.reduceMotion ? 0 : 1)) % 96;
+    const drift = (sim.player.x * 0.18 + tick * 0.03 * (this.opts.reduceMotion ? 0 : 1)) % 108;
     ctx.save();
-    ctx.fillStyle = this.linear(GROUND + 30, H, [[0, 'rgba(0,0,0,0)'], [1, 'rgba(4,3,2,.55)']]);
+    ctx.fillStyle = this.linear(GROUND + 30, H, [[0, 'rgba(0,0,0,0)'], [1, 'rgba(4,3,2,.4)']]);
     ctx.fillRect(0, GROUND + 30, W, H - GROUND);
-    ctx.fillStyle = mix(P.ink, '#000000', 0.4);
     ctx.beginPath(); ctx.rect(0, GROUND + 34, W, H); ctx.clip();
     for (let i = -1; i < 9; i++) {
-      const x = i * 96 - drift;
-      for (let k = 0; k < 3; k++) {
-        const bx = x + k * 13, hh = 18 + ((i * 7 + k * 5) % 4) * 8;
-        const sway = this.opts.reduceMotion ? 0 : Math.sin((tick + bx) / 13) * 2.4;
-        ctx.beginPath(); ctx.moveTo(bx, H);
-        ctx.quadraticCurveTo(bx + 3 + sway * 0.4, H - hh * 0.6, bx + 8 + k + sway, H - hh);
-        ctx.lineTo(bx + 5, H); ctx.closePath(); ctx.fill();
+      const x = i * 108 - drift;
+      for (let k = 0; k < 4; k++) {
+        const bx = x + k * 12;
+        const hh = 12 + hash(i * 17 + k * 9 + 3) * 22;
+        const sway = this.opts.reduceMotion ? 0 : Math.sin((tick + bx) / 17) * 2.2;
+        ctx.fillStyle = (i + k) % 2 === 0 ? 'rgba(39,78,39,.92)' : 'rgba(79,112,48,.88)';
+        ctx.beginPath(); ctx.moveTo(bx - 1.5, H);
+        ctx.quadraticCurveTo(bx + 2 + sway * 0.35, H - hh * 0.62, bx + 5 + sway, H - hh);
+        ctx.quadraticCurveTo(bx + 7 + sway * 0.35, H - hh * 0.44, bx + 4.5, H);
+        ctx.closePath(); ctx.fill();
+        if ((i * 4 + k) % 17 === 0) {
+          ctx.fillStyle = mix('#c7bb73', P.ground, 0.12);
+          ctx.beginPath(); ctx.arc(bx + 5 + sway, H - hh, 1.5, 0, 6.283); ctx.fill();
+        }
       }
     }
     ctx.restore();
