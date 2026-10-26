@@ -238,6 +238,6 @@ gh api -X PUT   repos/Titaniaroro/Khadga/pages -f build_type=workflow        # �
 
 <p align="center"><sub>
 <b>লাইসেন্স:</b> কোড <a href="LICENSE">GPL-3.0</a> · সামগ্রী CC BY-SA 4.0 — <a href="CREDITS.md">ফন্ট, উৎস ও চিত্রের কৃতজ্ঞতা</a> · <a href="docs/design-khadga.md">নকশা-ব্রিফ</a><br>
-হেরো-চিত্র ১৩৪KB — আগের AI-মকআপটা বাদ; দুটো ফ্রেমই `tools/hero.mjs` **আসল** সিম ও রেন্ডারার নোডে চালিয়ে তুলেছে (`npm run hero`), তাই ছবি খেলার চেহারার সঙ্গে মেলে। শৈলী: আধুনিক HD ছায়া-পুতুল (চাইলে সেটিংসে পিক্সেল-আর্কেড রূপ)<br>
+হেরো-চিত্র ১২৬KB — আগের AI-মকআপটা বাদ; দুটো ফ্রেমই `tools/hero.mjs` **আসল** সিম ও রেন্ডারার নোডে চালিয়ে তুলেছে (`npm run hero`), তাই ছবি খেলার চেহারার সঙ্গে মেলে। শৈলী: আধুনিক HD ছায়া-পুতুল (চাইলে সেটিংসে পিক্সেল-আর্কেড রূপ)<br>
 এই পাতাটি <code>node tools/readme.mjs</code> থেকে জেনারেট হয়: টেবিল, ফ্রেম-ডেটা, ব্যাজের সংখ্যা — সব <code>content/</code>, <code>src/frames.ts</code> ও <code>docs/</code> থেকে তোলা। সম্পাদনা করতে চাইলে টুলটাই বদলান, তাহলে কিছু পুরোনো থাকবে না
 </sub></p>
