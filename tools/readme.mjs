@@ -78,8 +78,8 @@ const perFile = {};
 for (const f of readdirSync(new URL('tests/', root)).sort()) {
   perFile[f.replace('.test.ts', '')] = (rd(`tests/${f}`).match(/^test\(/gm) ?? []).length;
 }
-V.tf = perFile.frames; V.ts = perFile.sim; V.td = perFile['dom-smoke'];
-V.tests = V.tf + V.ts + V.td;
+V.tf = perFile.frames; V.ts = perFile.sim; V.td = perFile['dom-smoke']; V.tfeel = perFile.feel ?? 0;
+V.tests = Object.values(perFile).reduce((n, v) => n + v, 0);
 const fontFiles = readdirSync(new URL('docs/fonts/', root));
 const size = (f) => kb(`docs/fonts/${f}`);
 V.f_hind = size(fontFiles.find((f) => /hind-.*400/.test(f)));

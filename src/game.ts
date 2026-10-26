@@ -11,7 +11,8 @@
  */
 import { Sim, type InputFrame, type SimEvent, boonOf } from './sim.ts';
 import { InputSource } from './input.ts';
-import { Renderer, PALETTES } from './render.ts';
+import { Renderer, PALETTES, OUTFITS } from './render.ts';
+import type { EnemyKind } from './fighter.ts';
 import { L, bn, bnTime } from './hud.ts';
 import type { ContentDoc, Chapter, QuizItem } from './content-types.ts';
 import { cardStrength } from './content-types.ts';
@@ -66,6 +67,7 @@ export class Game {
   private comboShown = 0;
   private coachStep = -1;
   private rush: RushState | null = null;
+  private lastUnlockAt = 0; // শব্দ-তালা খোলার মুহূর্ত — একই চাপ যেন আবার বন্ধ না করে
 
   constructor(doc: ContentDoc, root: HTMLElement) {
     this.doc = doc;
@@ -83,7 +85,10 @@ export class Game {
     this.sound.setMusic(this.progress.prefs.music);
     this.sound.setSfx(this.progress.prefs.sound !== false);
     this.input = new InputSource(root, () => { /* প্রথম স্পর্শ */ });
-    this.input.onAny = () => this.sound.unlock();
+    this.input.onAny = () => this.ensureAudio();
+    // মঞ্চের বাইরে যেকোনো চাপ/কী-চাপেই শব্দ জাগবে — শুধু লড়াইয়ের বোতামে নয়
+    document.addEventListener('pointerdown', () => this.ensureAudio());
+    document.addEventListener('keydown', () => this.ensureAudio());
     this.input.onEscape = () => { if (this.scene === 'wave' || this.scene === 'duel' || this.scene === 'rush') this.togglePause(); };
     for (const id of ['hud', 'title', 'select', 'read', 'rush', 'result', 'pause', 'qbar', 'tbar', 'toast', 'banner', 'hint', 'coach', 'bossbar', 'objbox', 'pad']) {
       this.dom[id] = document.getElementById(id);
@@ -141,8 +146,22 @@ export class Game {
       if (b.dataset.bound) return;   // আগের সংস্করণে প্রতিটি সিন-বদলে লিসেনার জমত
       b.dataset.bound = '1';
       b.addEventListener('click', () => {
-        this.sound.unlock(); this.sound.ui();
         const a = b.dataset.act!;
+        if (a === 'soundGate') { this.ensureAudio(true); return; }
+        if (a === 'soundTest') { this.ensureAudio(true); this.sound.testSound(); this.toastNow(L.soundNowOn); return; }
+        const wasUnlocked = this.sound.isUnlocked;
+        this.ensureAudio();
+        if (a === 'sound' || a === 'soundBtn') {
+          // প্রথম চাপের কাজ শুধু শব্দ *খোলা* — আগে এটাই খুলে সঙ্গে সঙ্গে বন্ধ করে দিত, তাই 'শব্দ নেই' লাগত
+          if (!wasUnlocked || Date.now() - this.lastUnlockAt < 900) {
+            this.progress.prefs.sound = true; this.sound.setSfx(true); writeProgress(this.progress);
+            this.refreshSoundUi(); this.toastNow(L.soundNowOn); this.sound.testSound(); return;
+          }
+          this.flip('sound', b);
+          if (this.progress.prefs.sound !== false) this.sound.ui();
+          return;
+        }
+        if (wasUnlocked) this.sound.ui();
         if (a === 'start') this.buildSelect();
         else if (a === 'back') { this.paused = false; this.buildSelect(); }
         else if (a === 'continue') this.openChapter(this.progress.lastChapter || this.highestFought().id);
@@ -156,7 +175,6 @@ export class Game {
         else if (a === 'pause') this.togglePause();
         else if (a === 'resume') this.togglePause();
         else if (a === 'fullscreen') void this.fullscreen();
-        else if (a === 'sound' || a === 'soundBtn') this.flip('sound', b);
         else if (a === 'copySave') void this.copySave(b);
         else if (a === 'pasteSave') this.pasteSave(b);
         else if (a === 'music') this.flip('music', b);
@@ -190,6 +208,7 @@ export class Game {
     set('rush-best', this.progress.rushBest ? `${L.best} ${bn(this.progress.rushBest)}` : '');
     set('dailyLabel', this.dailyChapter().title_bn);
     document.getElementById('continueBtn')?.classList.toggle('hide', !(this.progress.done.length || this.progress.read.length > 2));
+    this.refreshSoundUi();
   }
 
   private dailyChapter(): Chapter {
@@ -264,6 +283,13 @@ export class Game {
       const t = cardStrength(c, this.doc.meta.sources_legend);
       return t === 'primary' ? L.tierPrimary : t === 'scholarly' ? L.tierScholarly : t === 'folk' ? L.tierFolk : L.tierEncy;
     };
+    const rosterKinds: EnemyKind[] = ch.fight_bn
+      ? ['hero', 'blade', 'shield', 'spear', 'swift', ...(ch.boss ? ['boss' as const] : []), ...([...this.boons.values()].some((b) => b.kind === 'ally') ? ['ally' as const] : [])]
+      : [];
+    const roster = rosterKinds.map((kind) => {
+      const outfit = OUTFITS[kind];
+      return `<span class="${kind === 'hero' ? 'me' : ''}" style="--c:${outfit.garment}"><i></i>${outfit.badge} ${outfit.label_bn} · ${outfit.weapon_bn}</span>`;
+    }).join('');
     el.innerHTML = `<div class="brief" style="--acc:${pal.accent};--sky2:${pal.sky}">
 <div class="brief-head"><span class="num">${bn(ch.id)}</span><div>
 <h2>${ch.title_bn} <small>${ch.years_bn}</small></h2>
@@ -271,6 +297,7 @@ export class Game {
 <p class="bearer">⚔ <b>${ch.bearer_bn.name_bn}</b> — ${ch.bearer_bn.role_bn}</p></div></div>
 ${ch.fight_bn ? `<div class="mission-chips">
 <span>🎯 ${L.mission}: ${ch.fight_bn.duel_bn}</span><span>🌊 ${bn(ch.fight_bn.waves)} ${L.wave} · ${L.seconds90}</span><span>🛡 ${L.breakGuard}</span><span>📜 ${bn(ch.cards.length)} কার্ড মাঠেই মিলবে</span></div>` : `<div class="mission-chips"><span>📖 ${L.prologue} — কার্ড পড়ে ভিত তৈরি করো, লড়াই এর পরের অধ্যায়ে</span></div>`}
+${roster ? `<div class="roster" aria-label="${L.rosterTitle}"><b>${L.rosterTitle}</b>${roster}</div>` : ''}
 ${ch.boss ? `<p class="bossline"><b>${L.vsBoss}:</b> ${ch.boss.name_bn} · <b>${L.mythLabel}:</b> ${ch.boss.myth_bn}</p>` : ''}
 <div class="row">
 <button class="go ready big" data-begin>${ch.fight_bn ? '⚔ ' + L.tapToFight : L.continue}</button>
@@ -307,7 +334,7 @@ ${ch.fight_bn ? `<button class="mini" data-endless>🌊 ${L.endless} (এই অ
       });
     });
     el.querySelector<HTMLButtonElement>('[data-begin]')?.addEventListener('click', () => {
-      this.sound.unlock();
+      this.ensureAudio();
       if (!ch.fight_bn) { this.complete(id, 2); this.buildSelect(); return; }
       this.startChapter(ch, 'wave');
     });
@@ -370,7 +397,7 @@ ${ch.fight_bn ? `<button class="mini" data-endless>🌊 ${L.endless} (এই অ
     this.dom.bossbar?.classList.toggle('hide', mode !== 'duel');
     this.dom.objbox?.classList.toggle('hide', mode !== 'wave');
     this.show(mode);
-    this.sound.unlock();
+    this.ensureAudio();
     this.sound.announce();
     this.dripCard();
     this.view.announce(endless ? L.endless : mode === 'duel' ? L.duelNow : L.fightNow, `${ch.title_bn} · ${ch.years_bn}`, 108);
@@ -428,8 +455,8 @@ ${ch.fight_bn ? `<button class="mini" data-endless>🌊 ${L.endless} (এই অ
     this.view.setOpts(this.viewOpts);
     this.view.resize();
     b.classList.toggle('on', Boolean((p as unknown as Record<string, boolean>)[key]));
-    if (key === 'sound') b.textContent = p.sound ? '🔊' : '🔇';
     writeProgress(this.progress);
+    if (key === 'sound' || key === 'music') this.refreshSoundUi();
   }
 
   private font(dir: number): void {
@@ -456,6 +483,37 @@ ${ch.fight_bn ? `<button class="mini" data-endless>🌊 ${L.endless} (এই অ
     b.textContent = L.saveDone;
     this.refreshTitle();
     this.buildSelect();
+  }
+
+  /** শব্দ-তালা খোলার একমাত্র পথ: context জাগানো + সব শব্দ-বোতামের রূপ একসাথে মেলানো। */
+  private ensureAudio(forceOn = false): void {
+    const p = this.progress.prefs;
+    if (forceOn) { p.music = true; p.sound = true; this.sound.setMusic(true); this.sound.setSfx(true); writeProgress(this.progress); }
+    const was = this.sound.isUnlocked;
+    this.sound.unlock();
+    if (!was && this.sound.isUnlocked) {
+      this.lastUnlockAt = Date.now();
+      if (this.scene === 'title') this.toastNow(L.soundNowOn);
+    }
+    this.refreshSoundUi();
+  }
+
+  private refreshSoundUi(): void {
+    const unlocked = this.sound.isUnlocked;
+    const p = this.progress.prefs;
+    const top = document.getElementById('soundTop');
+    if (top) { top.textContent = !unlocked ? '🔇 শব্দ' : p.sound === false ? '🔇' : '🔊'; top.classList.toggle('needs-sound', !unlocked); }
+    const gate = document.getElementById('soundGate');
+    if (gate) {
+      gate.innerHTML = unlocked
+        ? '✓ শব্দ চালু আছে<small>সংগীত · তলোয়ার · ঢোল — এখন লড়াই শুরু করো</small>'
+        : '🔊 শব্দ চালু করো<small>সংগীত, তলোয়ারের সুইং, ঢোল — শুনতে একবার চাপো</small>';
+      gate.classList.toggle('on', unlocked);
+    }
+    document.querySelectorAll<HTMLElement>('[data-act]').forEach((el) => {
+      if (el.dataset.act === 'music') el.classList.toggle('on', p.music !== false);
+      if (el.dataset.act === 'soundBtn') el.classList.toggle('on', p.sound !== false);
+    });
   }
 
   private toastNow(t: string): void {
@@ -529,9 +587,8 @@ ${ch.fight_bn ? `<button class="mini" data-endless>🌊 ${L.endless} (এই অ
     if (sim.hitstop > 0) { sim.hitstop -= 1; return; }   // আঘাতের ওজন: ২–৬ ফ্রেম থমকে থাকা
     const raw: InputFrame = this.input.read();
     const inp: InputFrame = { ...raw, answer: this.question ? raw.answer : null };
-    if (raw.pressed === 'cut' || raw.pressed === 'heavy' || raw.pressed === 'thrust') this.sound.swing(raw.pressed === 'heavy');
     if (raw.pressed === 'side') this.sound.dash();
-    if (raw.pressed === 'resolve' && sim.player.meter >= RESOLVE_COST) this.sound.resolve();
+    if ((raw.moveX || raw.moveY) && sim.player.phase === 'idle' && sim.frame % 13 === 0) this.sound.footstep();
     this.coachObserve(raw);
     const events = sim.step(inp);
     this.lastEvents = events;
@@ -599,12 +656,12 @@ ${ch.fight_bn ? `<button class="mini" data-endless>🌊 ${L.endless} (এই অ
           this.view.pop(e.x, y, L.parried, '#bfe8ff', true);
           if (e.on === sim.player.name_bn) this.awardFeat('parry1');
         } else if (e.kind === 'block') {
-          this.sound.block();
+          this.sound.block((e.x - 380) / 380);
           this.view.burst(e.x, y + 20, 5, '#cfe6ef');
         } else if (e.kind === 'hit') {
-          if (byPlayer) { this.sound.hit(e.dmg >= 13); this.view.burst(e.x, y + 20, e.dmg >= 13 ? 14 : 8, '#ffe9a8'); this.view.kick(e.dmg >= 13 ? 6 : 3); }
+          if (byPlayer) { this.sound.hit(e.dmg >= 13, (e.x - 380) / 380); this.sound.grunt(true, (e.x - 380) / 380); this.view.burst(e.x, y + 20, e.dmg >= 13 ? 14 : 8, '#ffe9a8'); this.view.kick(e.dmg >= 13 ? 6 : 3); }
           else if (e.on === sim.player.name_bn) { this.sound.hurt(); this.sound.vibrate(28); this.view.kick(4); }
-          else this.sound.hit(false);
+          else this.sound.hit(false, (e.x - 380) / 380);
           this.view.pop(e.x, y, bn(e.dmg), byPlayer ? '#ffe9a8' : '#ffb4a2', e.dmg >= 20);
         }
         break;
@@ -640,6 +697,14 @@ ${ch.fight_bn ? `<button class="mini" data-endless>🌊 ${L.endless} (এই অ
       case 'boon': this.toastNow(`${L.tactic}: ${e.boon_bn}`); this.boons.set(e.card, boonOf(e.boon_bn)); break;
       case 'break': this.banner = { text: e.text, life: 330 }; this.view.announce(L.guardBroken, '', 130); break;
       case 'phase': this.toastNow(`🔥 ${L.phaseUp} (${L.bossGuard} ফিরেছে)`); this.sound.announce(); break;
+      case 'swing': {
+        const pan = (e.x - 380) / 380;
+        if (e.kind === 'resolve') this.sound.resolve();
+        this.sound.swing(e.kind === 'heavy' || e.kind === 'resolve', pan);
+        if (e.kind !== 'cut' || Math.random() < 0.3) this.sound.grunt(e.hostile, pan);   // শত্রুর গর্জন এখন সত্যিই শোনা যায়
+        break;
+      }
+      case 'telegraph': this.sound.warning((e.x - 380) / 380); break;
       case 'comboend': this.view.pop(sim.player.x, 240 + sim.player.y, `+${bn(e.bonus)}`, '#ffb347'); break;
       case 'question': this.question = { ...e.q, lives: e.lives }; this.input.answerMode = true; this.sound.announce(); this.paintQuestion(); break;
       case 'qtimeout':
@@ -749,7 +814,7 @@ ${won ? `<button data-act="again">${L.again}</button>` : `<button data-act="back
 
   // ─── সত্য-দৌড় (Quiz Rush) ────────────────────────────────────────────────
   startRush(): void {
-    this.sound.unlock();
+    this.ensureAudio();
     const upto = Math.max(1, ...this.doc.chapters.map((c, i) => (this.unlocked(i) ? c.id : 0)));
     const pool = this.doc.chapters
       .filter((c) => c.id <= upto)

@@ -23,7 +23,7 @@
   <header id="topbar">
     <div class="brand"><span class="brand-mark" aria-hidden="true">⚔</span><h1 id="gtitle">খড়্গ</h1><p id="gsub"></p></div>
     <div id="hudtop">
-      <button data-act="sound" aria-label="শব্দ">🔊</button>
+      <button id="soundTop" class="needs-sound" data-act="sound" aria-label="শব্দ চালু বা বন্ধ">🔇 শব্দ</button>
       <button data-act="fullscreen" aria-label="পূর্ণ-পর্দা">পূর্ণ-পর্দা</button>
       <button data-act="pause" aria-label="বিরতি">⏸ বিরতি</button>
     </div>
@@ -83,6 +83,7 @@
         <div><b id="stat-rank">শিক্ষানবিশ</b><small>খড়্গধরের মর্যাদা</small></div>
       </div>
     </div>
+    <button id="soundGate" class="sound-gate" data-act="soundGate">🔊 শব্দ চালু করো<small>সংগীত, তলোয়ারের সুইং, ঢোল — শুনতে একবার চাপো</small></button>
     <div class="modes">
       <button class="mode primary" data-act="start"><b>📖 গল্প-অভিযান</b><small>৯ অধ্যায় · ঢেউ আর দ্বন্দ্ব</small></button>
       <button class="mode" data-act="endless"><b>🌊 অসীম ঢেউ</b><small>যতক্ষণ টিকতে পারো — স্কোর তাড়া করো</small><em id="endless-best"></em></button>
@@ -98,6 +99,7 @@
       <div class="toggles">
         <button data-act="music" class="on">যন্ত্রসংগীত</button>
         <button data-act="soundBtn" class="on">লড়াইয়ের শব্দ</button>
+        <button data-act="soundTest">শব্দ পরীক্ষা</button>
         <button data-act="gentle">সহজ মোড</button>
         <button data-act="teacher">শিক্ষক-মোড</button>
         <button data-act="pixel">পিক্সেল আর্কেড</button>
